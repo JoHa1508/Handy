@@ -211,8 +211,8 @@ function renderWalk() {
       set(SX + x, SY + y + dy, PALETTE[ch]);
     }
   }
-  // A small tongue tip at the mouth while trotting along.
-  if (frame % 8 < 4) set(SX + 20, SY + 8 + hy, PALETTE.p);
+  // Tongue hanging out in front of the chest, flapping a little.
+  rect(SX + 20, SY + 8 + hy, 2, frame % 4 < 2 ? 2 : 1, PALETTE.p);
 }
 
 function render() {
