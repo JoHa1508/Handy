@@ -55,6 +55,11 @@ const OVERLAY_HEIGHT: f64 = 50.0;
 const OVERLAY_STREAM_WIDTH: f64 = 400.0;
 const OVERLAY_STREAM_HEIGHT: f64 = 120.0;
 
+/// Window label and event of the edge bot (macOS): a small pixel figure that
+/// walks along the screen edge and stands in for the pill during a session.
+const BOT_OVERLAY_LABEL: &str = "bot_overlay";
+const BOT_STATE_EVENT: &str = "bot-state";
+
 const NOTICE_STATE: &str = "notice";
 const LIVE_NOTICE_STATE: &str = "live_notice";
 
@@ -507,6 +512,109 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
     }
 }
 
+/// Work area of the primary monitor in logical points: the screen without the
+/// menu bar and the Dock. The bot walks along the edges of this rectangle.
+#[cfg(target_os = "macos")]
+fn bot_overlay_frame(app_handle: &AppHandle) -> Option<(f64, f64, f64, f64)> {
+    let monitor = app_handle.primary_monitor().ok().flatten()?;
+    let scale = monitor.scale_factor();
+    let wa = monitor.work_area();
+    Some((
+        wa.position.x as f64 / scale,
+        wa.position.y as f64 / scale,
+        wa.size.width as f64 / scale,
+        wa.size.height as f64 / scale,
+    ))
+}
+
+/// Creates the bot panel: transparent, click-through, on every Space. Shown
+/// right away unless the overlay is switched off (`overlay_style: none`).
+#[cfg(target_os = "macos")]
+pub fn create_bot_overlay(app_handle: &AppHandle) {
+    let Some((x, y, width, height)) = bot_overlay_frame(app_handle) else {
+        log::error!("No primary monitor, not creating the bot overlay");
+        return;
+    };
+    match PanelBuilder::<_, RecordingOverlayPanel>::new(app_handle, BOT_OVERLAY_LABEL)
+        .url(WebviewUrl::App("src/bot/index.html".into()))
+        .title("Bot")
+        .position(tauri::Position::Logical(tauri::LogicalPosition { x, y }))
+        .level(PanelLevel::Status)
+        .size(tauri::Size::Logical(tauri::LogicalSize { width, height }))
+        .has_shadow(false)
+        .transparent(true)
+        .no_activate(true)
+        .corner_radius(0.0)
+        .style_mask(StyleMask::empty().borderless().nonactivating_panel())
+        .with_window(|w| w.decorations(false).transparent(true).focusable(false))
+        .collection_behavior(
+            CollectionBehavior::new()
+                .can_join_all_spaces()
+                .full_screen_auxiliary(),
+        )
+        .build()
+    {
+        Ok(_panel) => {
+            if let Some(window) = app_handle.get_webview_window(BOT_OVERLAY_LABEL) {
+                // The window covers the whole work area, so every click must
+                // fall through to the apps below.
+                if let Err(e) = window.set_ignore_cursor_events(true) {
+                    log::error!("Bot overlay would swallow clicks, hiding it: {}", e);
+                    let _ = window.hide();
+                    return;
+                }
+                if settings::get_settings(app_handle).overlay_style == OverlayStyle::None {
+                    let _ = window.hide();
+                } else {
+                    let _ = window.show();
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to create bot overlay panel: {}", e);
+        }
+    }
+}
+
+/// The bot exists on macOS only.
+#[cfg(not(target_os = "macos"))]
+pub fn create_bot_overlay(_app_handle: &AppHandle) {}
+
+/// Shows or hides the bot when the overlay style is switched on or off.
+pub fn set_bot_overlay_visible(app_handle: &AppHandle, visible: bool) {
+    let handle = app_handle.clone();
+    let _ = app_handle.run_on_main_thread(move || {
+        if let Some(window) = handle.get_webview_window(BOT_OVERLAY_LABEL) {
+            let _ = if visible {
+                window.show()
+            } else {
+                window.hide()
+            };
+        }
+    });
+}
+
+/// Re-fits the bot window to the work area, which moves with the Dock and
+/// with displays being plugged in.
+#[cfg(target_os = "macos")]
+fn fit_bot_overlay(app_handle: &AppHandle) {
+    let handle = app_handle.clone();
+    let _ = app_handle.run_on_main_thread(move || {
+        if let (Some(window), Some((x, y, width, height))) = (
+            handle.get_webview_window(BOT_OVERLAY_LABEL),
+            bot_overlay_frame(&handle),
+        ) {
+            let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
+            let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
+        }
+    });
+}
+
+/// Tells the bot what the session is doing: a session state, or `idle`.
+fn emit_bot_state(app_handle: &AppHandle, state: &str) {
+    let _ = app_handle.emit_to(BOT_OVERLAY_LABEL, BOT_STATE_EVENT, state);
+}
+
 fn show_overlay_state(app_handle: &AppHandle, state: &str) {
     // Whether the overlay shows at all is governed by overlay_style; position
     // only chooses Top vs Bottom placement. Checked here (off the main thread)
@@ -517,6 +625,19 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
     }
     OVERLAY_SESSION_SHOWING.store(true, Ordering::SeqCst);
     OVERLAY_SESSION_LIVE.store(is_live_state(state), Ordering::SeqCst);
+
+    // On macOS the bot plays the session; the pill only shows notices.
+    #[cfg(target_os = "macos")]
+    if matches!(
+        state,
+        "recording" | "streaming" | "transcribing" | "processing"
+    ) {
+        if matches!(state, "recording" | "streaming") {
+            fit_bot_overlay(app_handle);
+        }
+        emit_bot_state(app_handle, state);
+        return;
+    }
 
     // The rest queries monitors and the cursor and mutates window geometry. On
     // Linux the monitor/cursor lookups hit GDK/Xlib on the process's shared X11
@@ -668,6 +789,7 @@ pub fn show_overlay_notice(app_handle: &AppHandle, notice: &Notice) {
     let handle = app_handle.clone();
     let notice = notice.clone();
     // On the main thread for the same reason as show_overlay_state.
+    emit_bot_state(app_handle, "idle");
     let _ = app_handle.run_on_main_thread(move || {
         let _ = handle.emit_to("recording_overlay", "overlay-notice", notice);
         show_overlay_state_on_main(&handle, state);
@@ -765,6 +887,7 @@ static OVERLAY_SESSION_LIVE: AtomicBool = AtomicBool::new(false);
 pub fn hide_recording_overlay(app_handle: &AppHandle) {
     OVERLAY_SESSION_SHOWING.store(false, Ordering::SeqCst);
     OVERLAY_SESSION_LIVE.store(false, Ordering::SeqCst);
+    emit_bot_state(app_handle, "idle");
     // Always hide the overlay regardless of settings - if setting was changed while recording,
     // we still want to hide it properly
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
@@ -841,7 +964,12 @@ pub fn emit_levels(app_handle: &AppHandle, levels: &[f32]) {
     // `emit_to` with the overlay's window label produces a single
     // eval_script call per callback, cutting the per-callback WebKit
     // dispatch work in half.
+    #[cfg(not(target_os = "macos"))]
     let _ = app_handle.emit_to("recording_overlay", "mic-level", levels);
+    // On macOS the pill stays hidden during a session; the bot's sound arcs
+    // are what follow the voice.
+    #[cfg(target_os = "macos")]
+    let _ = app_handle.emit_to(BOT_OVERLAY_LABEL, "mic-level", levels);
 }
 
 #[cfg(test)]

@@ -1387,7 +1387,11 @@ fn os_languages() -> &'static [String] {
 pub fn update_checks_forced_disabled() -> bool {
     use std::sync::OnceLock;
     static IS_UPDATER_DISABLED: OnceLock<bool> = OnceLock::new();
-    *IS_UPDATER_DISABLED.get_or_init(|| utils::env_flag_enabled("HANDY_DISABLE_UPDATER"))
+    // Fork build with the edge bot: an upstream update would replace it, so
+    // the updater is always off here.
+    const FORK_BUILD: bool = true;
+    *IS_UPDATER_DISABLED
+        .get_or_init(|| FORK_BUILD || utils::env_flag_enabled("HANDY_DISABLE_UPDATER"))
 }
 
 /// Effective updater state: the user's stored preference, overridden to `false`

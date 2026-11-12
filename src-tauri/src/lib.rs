@@ -395,6 +395,9 @@ fn initialize_core_logic(app_handle: &AppHandle) {
 
     // Create the recording overlay window (hidden by default)
     utils::create_recording_overlay(app_handle);
+
+    // Create the edge bot (macOS only; a no-op elsewhere)
+    utils::create_bot_overlay(app_handle);
 }
 
 #[tauri::command]

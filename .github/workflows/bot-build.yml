@@ -1,0 +1,21 @@
+name: "Bot Build"
+
+# Fork-only: builds the macOS Apple Silicon app with the edge bot, unsigned
+# (ad hoc), and uploads it as a workflow artifact.
+on:
+  workflow_dispatch:
+  push:
+    branches: [bot]
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      platform: "macos-26"
+      target: "aarch64-apple-darwin"
+      build-args: "--target aarch64-apple-darwin"
+      sign-binaries: false
+      asset-prefix: "handy-bot"
+      upload-artifacts: true
