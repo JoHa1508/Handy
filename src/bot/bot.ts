@@ -8,8 +8,8 @@ type Mode = "walk" | "stand" | "listen" | "think";
 
 const GRID = 32; // sprite canvas, in cells
 const BOX = 64; // sprite box on screen, in CSS px (2 px per cell)
-const SPEED = 26; // walking speed, CSS px per second
-const OX = 6; // sprite's left column inside the grid
+let speed = 26; // walking speed, CSS px per second
+const OX = 5; // sprite's left column inside the grid
 
 const COLOR = {
   hi: "#a9d6ff",
@@ -115,7 +115,7 @@ function render() {
 
   // Legs and feet.
   for (const [x, lifted] of [
-    [OX + 5, step === 1],
+    [OX + 4, step === 1],
     [OX + 8, step === 3],
   ] as [number, boolean][]) {
     if (lifted) {
@@ -128,10 +128,10 @@ function render() {
   }
 
   // Body, then the arm that hangs down on the left.
-  rect(OX + 4, 24, 6, 4, COLOR.shade);
-  rect(OX + 3, 25, 1, step === 1 ? 3 : 2, COLOR.arm);
+  rect(OX + 3, 24, 8, 4, COLOR.shade);
+  rect(OX + 2, 25, 1, step === 1 ? 3 : 2, COLOR.arm);
   if (mode === "walk" || mode === "stand") {
-    rect(OX + 10, 25, 1, step === 3 ? 3 : 2, COLOR.arm);
+    rect(OX + 11, 25, 1, step === 3 ? 3 : 2, COLOR.arm);
   }
 
   // Head.
@@ -168,18 +168,18 @@ function render() {
 
   if (mode === "listen") {
     // Arm up to the ear, holding a little ear trumpet.
-    set(OX + 10, 25, COLOR.arm);
-    set(OX + 11, 24, COLOR.arm);
-    set(OX + 12, 23, COLOR.arm);
-    set(OX + 13, 22, COLOR.arm);
-    rect(OX + 14, 20, 1, 2, COLOR.hi);
+    set(OX + 11, 25, COLOR.arm);
+    set(OX + 12, 24, COLOR.hi);
+    set(OX + 13, 23, COLOR.hi);
+    rect(OX + 14, 20, 1, 3, COLOR.hi);
     rect(OX + 14, 18, 1, 2, COLOR.horn);
     rect(OX + 15, 17, 1, 4, COLOR.horn);
     rect(OX + 16, 16, 1, 6, COLOR.horn);
+    rect(OX + 17, 15, 1, 8, COLOR.horn);
     // Sound arcs: more of them the louder the voice.
     const arcs = level > 0.5 ? 3 : level > 0.22 ? 2 : level > 0.06 ? 1 : 0;
     for (let k = 0; k < arcs; k++) {
-      const x = OX + 18 + k * 3;
+      const x = OX + 19 + k * 3;
       const half = 1 + k;
       set(x - 1, 18 - half, COLOR.wave);
       rect(x, 19 - half, 1, half * 2, COLOR.wave);
@@ -189,10 +189,8 @@ function render() {
 
   if (mode === "think") {
     // Hand at the chin and thought bubbles rising above the head.
-    set(OX + 10, 25, COLOR.arm);
-    set(OX + 11, 24, COLOR.arm);
-    set(OX + 11, 23, COLOR.arm);
-    rect(OX + 9, 23, 2, 1, COLOR.hi);
+    rect(OX + 11, 24, 1, 3, COLOR.arm);
+    rect(OX + 8, 24, 3, 1, COLOR.hi);
     const bubbles = frame % 4;
     if (bubbles >= 1) rect(OX + 13, 10, 1, 1, COLOR.wave);
     if (bubbles >= 2) rect(OX + 15, 6, 2, 2, COLOR.wave);
@@ -306,7 +304,7 @@ function walk() {
     dir > 0 ? Math.min(end, t + stride) : Math.max(end, t - stride);
   walkFrom = t;
   walkTarget = target;
-  walkDuration = (Math.abs(target - t) / SPEED) * 1000;
+  walkDuration = (Math.abs(target - t) / speed) * 1000;
   walkStart = performance.now();
   setMode("walk");
   // Let the browser apply the start position before the transition begins.
@@ -377,7 +375,13 @@ async function start() {
   }
 
   // Browser preview: buttons for the states and a made-up voice level.
-  const api = { setState, setLevel };
+  const api = {
+    setState,
+    setLevel,
+    setSpeed: (value: number) => {
+      speed = value;
+    },
+  };
   (window as unknown as { handyBot: typeof api }).handyBot = api;
   window.setInterval(() => {
     if (state === "listen") setLevel(Math.random() ** 2);
