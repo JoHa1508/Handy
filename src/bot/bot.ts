@@ -9,6 +9,8 @@ type Mode = "walk" | "stand" | "listen" | "think";
 const GRID = 32; // sprite canvas, in cells
 const BOX = 80; // sprite box on screen, in CSS px (2.5 px per cell)
 let speed = 26; // walking speed, CSS px per second
+const RUN_SPEED = 240; // speed on the way to the parking spot
+const PARK_KEY = "handy-bot-parked";
 
 // The golden retriever from Jos's "Mathe für Gina" mascot: left half of each
 // row plus its centre column, mirrored to 21 columns. Rows 0-10 are the head.
@@ -88,6 +90,19 @@ let planTimer: number | undefined;
 let tickTimer: number | undefined;
 let thinkTimer: number | undefined;
 
+// Parked: the dog sits at the bottom centre, where the pill used to be, until
+// it is clicked again. Remembered across restarts.
+let parked = false;
+try {
+  parked = window.localStorage.getItem(PARK_KEY) === "1";
+} catch {
+  // No storage: the dog simply starts out roaming.
+}
+// Last cursor position inside the window, or null when it is away from the dog.
+let cursor: [number, number] | null = null;
+let clickable = false;
+let setClickThrough: ((ignore: boolean) => void) | undefined;
+
 function edgeLength(e: number): number {
   const r = stageEl.getBoundingClientRect();
   return Math.max(0, (e % 2 === 0 ? r.width : r.height) - BOX);
@@ -124,52 +139,80 @@ function rect(x: number, y: number, w: number, h: number, color: string) {
 
 // Standing still the dog sits facing the viewer, exactly as in the mascot. On
 // the move it is drawn from the side in the same palette, with a walk cycle.
+const SIDE = [
+  "............ggggggg.....",
+  "...........ggggggggg....",
+  "..........ddgggggggggg..",
+  "..........dddgggEggggg..",
+  "..........dddgggEggllll.",
+  "..........dddggggglllk..",
+  "...........ddggggglllll.",
+  "............gggggggll...",
+  "............ggggggg.....",
+  "........gggggggggg......",
+  ".....ggggggggggggg......",
+  "...gggggggggggggggl.....",
+  "....ggggggggggggglll....",
+  "....gggggggggggggll.....",
+  "....gggllllllllggg......",
+];
+const SIDE_HEAD_ROWS = 9;
+const SX = 4; // side sprite's left column inside the grid
+const SY = 13; // side sprite's top row; paws end on row 30
+
 function renderWalk() {
   const step = frame % 4;
   const wag = frame % 2 === 1;
   const hy = step % 2 === 1 ? 1 : 0;
+  const blinking = performance.now() < blinkUntil;
 
   // Tail up, wagging.
-  if (wag) {
-    rect(6, 21, 2, 2, PALETTE.g);
-    rect(4, 20, 3, 2, PALETTE.g);
-  } else {
-    rect(6, 20, 2, 3, PALETTE.g);
-    rect(5, 18, 2, 3, PALETTE.g);
-  }
-  // Four legs; diagonal pairs lift in turn.
+  const tail: [number, number][] = wag
+    ? [
+        [0, 10],
+        [1, 10],
+        [1, 11],
+        [2, 11],
+      ]
+    : [
+        [1, 8],
+        [1, 9],
+        [2, 9],
+        [2, 10],
+        [3, 10],
+      ];
+  for (const [x, y] of tail) set(SX + x, SY + y, PALETTE.g);
+
+  // Four short legs; diagonal pairs lift in turn.
   const legs: [number, boolean][] = [
-    [8, step === 1],
-    [11, step === 3],
-    [16, step === 3],
-    [19, step === 1],
+    [4, step === 1],
+    [7, step === 3],
+    [14, step === 3],
+    [17, step === 1],
   ];
   for (const [x, lifted] of legs) {
     if (lifted) {
-      rect(x + 1, 27, 2, 2, PALETTE.g);
-      rect(x + 1, 29, 2, 1, PALETTE.l);
+      rect(SX + x + 1, SY + 15, 2, 1, PALETTE.g);
+      rect(SX + x + 1, SY + 16, 2, 1, PALETTE.l);
     } else {
-      rect(x, 27, 2, 3, PALETTE.g);
-      rect(x, 30, 2, 1, PALETTE.l);
+      rect(SX + x, SY + 15, 2, 2, PALETTE.g);
+      rect(SX + x, SY + 17, 2, 1, PALETTE.l);
     }
   }
-  // Body with a lighter belly, neck.
-  rect(8, 22, 13, 5, PALETTE.g);
-  rect(10, 26, 8, 1, PALETTE.l);
-  rect(17, 19, 4, 4, PALETTE.g);
-  // Big head like the mascot's: floppy dark ear, light muzzle, dark nose.
-  rect(18, 11 + hy, 6, 1, PALETTE.g);
-  rect(17, 12 + hy, 8, 7, PALETTE.g);
-  rect(17, 12 + hy, 3, 6, PALETTE.d);
-  rect(23, 15 + hy, 5, 3, PALETTE.l);
-  set(27, 15 + hy, PALETTE.k);
-  if (performance.now() < blinkUntil) {
-    set(22, 14 + hy, PALETTE.o);
-  } else {
-    rect(22, 13 + hy, 1, 2, PALETTE.E);
+
+  // Body first, then the big head on top; the head nods with each step.
+  for (let y = SIDE.length - 1; y >= 0; y--) {
+    const row = SIDE[y];
+    const dy = y < SIDE_HEAD_ROWS ? hy : 0;
+    for (let x = 0; x < row.length; x++) {
+      let ch = row[x];
+      if (ch === ".") continue;
+      if (ch === "E" && blinking) ch = y === 3 ? "g" : "o";
+      set(SX + x, SY + y + dy, PALETTE[ch]);
+    }
   }
   // Tongue out while trotting along.
-  if (frame % 8 < 4) rect(25, 18 + hy, 1, 2, PALETTE.p);
+  if (frame % 8 < 4) rect(SX + 19, SY + 8 + hy, 1, 2, PALETTE.p);
 }
 
 function render() {
@@ -268,6 +311,7 @@ function tick() {
     blinkUntil = performance.now() + 400;
   }
   render();
+  updateClickable();
   tickTimer = window.setTimeout(tick, TICK_MS[mode]);
 }
 
@@ -292,8 +336,26 @@ function freeze() {
   place(t, 0);
 }
 
+function parkingSpot(): number {
+  return edgeLength(0) / 2;
+}
+
+/** Shorter way round to the parking spot: 1 counter-clockwise, -1 clockwise. */
+function directionToSpot(): number {
+  const lengths = [0, 1, 2, 3].map(edgeLength);
+  const total = lengths.reduce((a, b) => a + b, 0);
+  let here = t;
+  for (let e = 0; e < edge; e++) here += lengths[e];
+  const ahead = (parkingSpot() - here + total) % total;
+  return ahead <= total / 2 ? 1 : -1;
+}
+
 function plan() {
   if (state !== "idle") return;
+  if (parked) {
+    walk();
+    return;
+  }
   const length = edgeLength(edge);
   t = Math.min(Math.max(t, 0), length);
 
@@ -315,6 +377,15 @@ function plan() {
 
 function walk() {
   if (state !== "idle") return;
+  if (parked) {
+    if (edge === 0 && Math.abs(t - parkingSpot()) < 1) {
+      // Arrived: sit down and stay.
+      setMode("stand");
+      place(t, 0);
+      return;
+    }
+    dir = directionToSpot();
+  }
   const length = edgeLength(edge);
   const end = dir > 0 ? length : 0;
 
@@ -328,11 +399,14 @@ function walk() {
   }
 
   const stride = 140 + Math.random() * 420;
-  const target =
-    dir > 0 ? Math.min(end, t + stride) : Math.max(end, t - stride);
+  let target = dir > 0 ? Math.min(end, t + stride) : Math.max(end, t - stride);
+  if (parked) {
+    const spot = parkingSpot();
+    target = edge === 0 && (spot - t) * dir > 0 ? spot : end;
+  }
   walkFrom = t;
   walkTarget = target;
-  walkDuration = (Math.abs(target - t) / speed) * 1000;
+  walkDuration = (Math.abs(target - t) / (parked ? RUN_SPEED : speed)) * 1000;
   walkStart = performance.now();
   setMode("walk");
   // Let the browser apply the start position before the transition begins.
@@ -362,6 +436,39 @@ function setState(next: BotState) {
   }
 }
 
+/** A click on the dog parks it at the bottom centre, the next one frees it. */
+function togglePark() {
+  parked = !parked;
+  try {
+    window.localStorage.setItem(PARK_KEY, parked ? "1" : "0");
+  } catch {
+    // Not remembered then.
+  }
+  if (state !== "idle") return;
+  freeze();
+  walk();
+}
+
+/**
+ * The window lets every click through. Only while the cursor is on the dog
+ * does it take clicks itself, so the dog can be clicked and nothing else is
+ * ever blocked.
+ */
+function updateClickable() {
+  let hit = false;
+  if (cursor) {
+    const r = botEl.getBoundingClientRect();
+    hit =
+      cursor[0] >= r.left &&
+      cursor[0] <= r.right &&
+      cursor[1] >= r.top &&
+      cursor[1] <= r.bottom;
+  }
+  if (hit === clickable) return;
+  clickable = hit;
+  setClickThrough?.(!hit);
+}
+
 function setLevel(value: number) {
   if (Number.isFinite(value)) level = Math.max(level, Math.min(1, value));
 }
@@ -380,8 +487,11 @@ window.addEventListener("resize", () => {
   } else {
     t = Math.min(t, edgeLength(edge));
     place(t, 0);
+    if (parked && state === "idle") planTimer = window.setTimeout(walk, 300);
   }
 });
+
+botEl.addEventListener("click", togglePark);
 
 async function start() {
   t = Math.random() * edgeLength(0);
@@ -393,6 +503,16 @@ async function start() {
     const { listen } = await import("@tauri-apps/api/event");
     await listen<string>("bot-state", (event) => {
       setState(fromBackend(event.payload));
+    });
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const appWindow = getCurrentWindow();
+    setClickThrough = (ignore) => {
+      void appWindow.setIgnoreCursorEvents(ignore);
+    };
+    await listen<[number, number]>("bot-cursor", (event) => {
+      const [x, y] = event.payload;
+      cursor = x < 0 ? null : [x, y];
+      updateClickable();
     });
     await listen<number[]>("mic-level", (event) => {
       let peak = 0;

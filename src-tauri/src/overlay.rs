@@ -527,6 +527,50 @@ fn bot_overlay_frame(app_handle: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     ))
 }
 
+/// The bot window's frame in logical points, for the cursor watcher (which
+/// must not query monitors off the main thread).
+#[cfg(target_os = "macos")]
+static BOT_FRAME: std::sync::Mutex<Option<(f64, f64, f64, f64)>> = std::sync::Mutex::new(None);
+
+/// Tells the bot where the cursor is while it is near a screen edge, so the
+/// page can make the window take clicks only while the cursor is on the dog.
+/// Away from the edges nothing is sent: the dog never leaves them.
+#[cfg(target_os = "macos")]
+fn watch_cursor_for_bot(app_handle: &AppHandle) {
+    const EDGE_ZONE: f64 = 110.0;
+    let handle = app_handle.clone();
+    std::thread::spawn(move || {
+        let mut last: Option<(i32, i32)> = None;
+        let mut was_near = false;
+        loop {
+            std::thread::sleep(Duration::from_millis(120));
+            if !OVERLAY_ENABLED.load(Ordering::Relaxed) {
+                continue;
+            }
+            let Some((fx, fy, fw, fh)) = BOT_FRAME.lock().ok().and_then(|frame| *frame) else {
+                continue;
+            };
+            let Some((cx, cy)) = input::get_cursor_position(&handle) else {
+                continue;
+            };
+            let x = cx as f64 - fx;
+            let y = cy as f64 - fy;
+            let inside = x >= 0.0 && y >= 0.0 && x <= fw && y <= fh;
+            let near = inside
+                && (x < EDGE_ZONE || y < EDGE_ZONE || x > fw - EDGE_ZONE || y > fh - EDGE_ZONE);
+            if near {
+                if last != Some((cx, cy)) {
+                    let _ = handle.emit_to(BOT_OVERLAY_LABEL, "bot-cursor", (x, y));
+                }
+            } else if was_near {
+                let _ = handle.emit_to(BOT_OVERLAY_LABEL, "bot-cursor", (-1.0, -1.0));
+            }
+            was_near = near;
+            last = Some((cx, cy));
+        }
+    });
+}
+
 /// Creates the bot panel: transparent, click-through, on every Space. Shown
 /// right away unless the overlay is switched off (`overlay_style: none`).
 #[cfg(target_os = "macos")]
@@ -535,6 +579,9 @@ pub fn create_bot_overlay(app_handle: &AppHandle) {
         log::error!("No primary monitor, not creating the bot overlay");
         return;
     };
+    if let Ok(mut frame) = BOT_FRAME.lock() {
+        *frame = Some((x, y, width, height));
+    }
     match PanelBuilder::<_, RecordingOverlayPanel>::new(app_handle, BOT_OVERLAY_LABEL)
         .url(WebviewUrl::App("src/bot/index.html".into()))
         .title("Bot")
@@ -568,6 +615,7 @@ pub fn create_bot_overlay(app_handle: &AppHandle) {
                 } else {
                     let _ = window.show();
                 }
+                watch_cursor_for_bot(app_handle);
             }
         }
         Err(e) => {
@@ -604,6 +652,9 @@ fn fit_bot_overlay(app_handle: &AppHandle) {
             handle.get_webview_window(BOT_OVERLAY_LABEL),
             bot_overlay_frame(&handle),
         ) {
+            if let Ok(mut frame) = BOT_FRAME.lock() {
+                *frame = Some((x, y, width, height));
+            }
             let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
             let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
         }

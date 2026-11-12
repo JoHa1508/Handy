@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "bot-capability",
+  "description": "Lets the edge bot take clicks only while the cursor is on it",
+  "windows": ["bot_overlay"],
+  "permissions": ["core:window:allow-set-ignore-cursor-events"]
+}
