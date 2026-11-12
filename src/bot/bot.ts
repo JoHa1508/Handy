@@ -4,7 +4,7 @@
 // preview with buttons instead of listening for Tauri events.
 
 type BotState = "idle" | "listen" | "think";
-type Mode = "walk" | "stand" | "listen" | "think";
+type Mode = "walk" | "stand" | "listen" | "think" | "sleep" | "chew" | "eat";
 
 const GRID = 32; // sprite canvas, in cells
 const BOX = 80; // sprite box on screen, in CSS px (2.5 px per cell)
@@ -159,6 +159,114 @@ let cursor: [number, number] | null = null;
 let clickable = false;
 let setClickThrough: ((ignore: boolean) => void) | undefined;
 
+// Home life: visits to the hut, the bowl, being stroked.
+let visiting = false;
+let wantFood = false;
+let forcedAct: Mode | null = null;
+let homeTimer: number | undefined;
+let visitTimer: number | undefined;
+let hoverSince = 0;
+let pettingPause = false;
+let lastHeart = 0;
+
+// ---- hut and bowl, always at the bottom right ----
+
+const CELL = BOX / GRID;
+
+function makeProp(className: string, w: number, h: number): HTMLCanvasElement {
+  const el = document.createElement("canvas");
+  el.className = className;
+  el.width = w;
+  el.height = h;
+  el.style.width = `${w * CELL}px`;
+  el.style.height = `${h * CELL}px`;
+  stageEl.insertBefore(el, botEl);
+  return el;
+}
+
+type Put = (x: number, y: number, w: number, h: number, color: string) => void;
+
+/** Paints a small pixel prop with a dark outline around it. */
+function drawProp(el: HTMLCanvasElement, draw: (put: Put) => void) {
+  const w = el.width;
+  const h = el.height;
+  const cells: (string | null)[] = new Array(w * h).fill(null);
+  draw((x, y, rw, rh, color) => {
+    for (let j = 0; j < rh; j++) {
+      for (let i = 0; i < rw; i++) {
+        const cx = x + i;
+        const cy = y + j;
+        if (cx >= 0 && cy >= 0 && cx < w && cy < h) cells[cy * w + cx] = color;
+      }
+    }
+  });
+  const at = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < w && y < h ? cells[y * w + x] : null;
+  const edgeCells: number[] = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (cells[y * w + x]) continue;
+      if (at(x - 1, y) || at(x + 1, y) || at(x, y - 1) || at(x, y + 1)) {
+        edgeCells.push(y * w + x);
+      }
+    }
+  }
+  for (const i of edgeCells) cells[i] = "#3b2314";
+  const c = el.getContext("2d") as CanvasRenderingContext2D;
+  c.clearRect(0, 0, w, h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const color = cells[y * w + x];
+      if (!color) continue;
+      c.fillStyle = color;
+      c.fillRect(x, y, 1, 1);
+    }
+  }
+}
+
+const hutEl = makeProp("bot-hut", 34, 32);
+const bowlEl = makeProp("bot-bowl", 14, 9);
+
+function drawHut() {
+  drawProp(hutEl, (put) => {
+    // Roof.
+    for (let y = 0; y < 12; y++) {
+      const half = 2 + Math.round(y * 1.25);
+      put(17 - half, 1 + y, half * 2, 1, y === 11 ? "#7d2f27" : "#b5483a");
+    }
+    // Plank walls.
+    put(4, 13, 26, 18, "#d9a066");
+    for (const y of [17, 21, 25, 29]) put(4, y, 26, 1, "#b97a45");
+    // Arched entrance.
+    put(13, 17, 8, 1, "#2a1b14");
+    put(12, 18, 10, 1, "#2a1b14");
+    put(11, 19, 12, 12, "#2a1b14");
+    if (mode === "sleep") {
+      // The dog asleep inside, head on its paws.
+      put(12, 25, 10, 6, PALETTE.g);
+      put(12, 25, 2, 4, PALETTE.d);
+      put(15, 28, 6, 3, PALETTE.l);
+      put(17, 28, 2, 1, PALETTE.k);
+      put(14, 27, 2, 1, PALETTE.o);
+      put(19, 27, 2, 1, PALETTE.o);
+    }
+  });
+}
+
+function drawBowl() {
+  drawProp(bowlEl, (put) => {
+    if (wantFood) {
+      put(4, 1, 6, 1, "#8a5a2b");
+      put(3, 2, 8, 2, "#8a5a2b");
+      put(5, 2, 1, 1, "#a8743a");
+      put(8, 3, 1, 1, "#a8743a");
+    }
+    put(1, 4, 12, 1, "#e8574e");
+    put(2, 5, 10, 2, "#c63d35");
+    put(3, 7, 8, 1, "#a32f29");
+  });
+}
+
 function edgeLength(e: number): number {
   const r = stageEl.getBoundingClientRect();
   return Math.max(0, (e % 2 === 0 ? r.width : r.height) - BOX);
@@ -216,10 +324,11 @@ const SIDE_HEAD_ROWS = 9;
 const SX = 4; // side sprite's left column inside the grid
 const SY = 13; // side sprite's top row; paws end on row 30
 
-function renderWalk() {
-  const step = frame % 4;
+function renderWalk(eating: boolean) {
+  const step = eating ? 0 : frame % 4;
   const wag = frame % 2 === 1;
-  const hy = step % 2 === 1 ? 1 : 0;
+  // Eating, the head goes down to the bowl and bobs there.
+  const hy = eating ? 3 + (frame % 2) : step % 2 === 1 ? 1 : 0;
   const blinking = performance.now() < blinkUntil;
 
   // Tail up, wagging.
@@ -273,18 +382,20 @@ function renderWalk() {
     }
   }
   // Tongue hanging out in front of the chest, flapping a little.
-  rect(SX + 20, SY + 8 + hy, 2, frame % 4 < 2 ? 2 : 1, PALETTE.p);
+  if (!eating) rect(SX + 20, SY + 8 + hy, 2, frame % 4 < 2 ? 2 : 1, PALETTE.p);
 }
 
 function render() {
   grid.fill(null);
-  const walking = mode === "walk";
-  const wagging = mode === "think" || (mode === "listen" && level > 0.06);
+  // Side view for walking and eating, front view for everything else.
+  const walking = mode === "walk" || mode === "eat";
+  const wagging =
+    mode === "think" || mode === "chew" || (mode === "listen" && level > 0.06);
   const wag = wagging && frame % 2 === 1 ? -1 : 0;
   const eyesShut = mode === "think" || performance.now() < blinkUntil;
 
   if (walking) {
-    renderWalk();
+    renderWalk(mode === "eat");
   } else {
     for (const [x, y, ch] of TAIL) set(OX + x, OY + y + wag, PALETTE[ch]);
 
@@ -308,6 +419,16 @@ function render() {
         if (eyesShut && y === 3) continue;
         set(OX + x, OY + y, PALETTE[ch]);
       }
+    }
+  }
+
+  if (mode === "chew") {
+    // A bone across the mouth, worked up and down.
+    const by = OY + 9 + (frame % 2);
+    rect(OX + 6, by, 9, 1, WAVE);
+    for (const x of [OX + 5, OX + 15]) {
+      set(x, by - 1, WAVE);
+      set(x, by + 1, WAVE);
     }
   }
 
@@ -371,6 +492,9 @@ const TICK_MS: Record<Mode, number> = {
   stand: 500,
   listen: 100,
   think: 260,
+  sleep: 700,
+  chew: 300,
+  eat: 220,
 };
 
 function tick() {
@@ -381,11 +505,38 @@ function tick() {
   }
   render();
   updateClickable();
+  const now = performance.now();
+  if (
+    hoverSince > 0 &&
+    mode !== "sleep" &&
+    now - hoverSince > 2000 &&
+    now - lastHeart > 450
+  ) {
+    // Stroked for a couple of seconds: hearts.
+    lastHeart = now;
+    heart();
+  }
+  if (mode === "sleep" && frame % 3 === 0) {
+    const s = stageEl.getBoundingClientRect();
+    const h = hutEl.getBoundingClientRect();
+    floatUp(
+      "z",
+      h.left - s.left + h.width * 0.7,
+      h.top - s.top + 6,
+      "#ffffff",
+      0,
+      -1,
+    );
+  }
   tickTimer = window.setTimeout(tick, TICK_MS[mode]);
 }
 
 function setMode(next: Mode) {
+  const sleepChanged = (mode === "sleep") !== (next === "sleep");
   mode = next;
+  // Asleep, the dog is inside the hut and drawn there.
+  botEl.style.visibility = mode === "sleep" ? "hidden" : "visible";
+  if (sleepChanged) drawHut();
   window.clearTimeout(tickTimer);
   render();
   tickTimer = window.setTimeout(tick, TICK_MS[mode]);
@@ -401,12 +552,68 @@ function currentDistance(): number {
 
 function freeze() {
   window.clearTimeout(planTimer);
+  window.clearTimeout(homeTimer);
   t = currentDistance();
   place(t, 0);
 }
 
+/** The dog's place at home: bottom right, in front of bowl and hut. */
 function parkingSpot(): number {
-  return edgeLength(0) / 2;
+  return Math.max(0, edgeLength(0) - 120);
+}
+
+/** Parked for good, on a visit to the hut, or called to a full bowl. */
+function needHome(): boolean {
+  return parked || visiting || wantFood;
+}
+
+function arriveHome() {
+  place(t, 0);
+  if (wantFood) {
+    // Face the bowl and eat it empty, then hearts.
+    dir = 1;
+    setMode("eat");
+    homeTimer = window.setTimeout(() => {
+      wantFood = false;
+      drawBowl();
+      setMode("stand");
+      for (let i = 0; i < 4; i++) window.setTimeout(heart, i * 260);
+      homeTimer = window.setTimeout(nextAtHome, 2600);
+    }, 5000);
+    return;
+  }
+  nextAtHome();
+}
+
+/** At home the dog sits, sleeps in the hut or chews a bone, in turns. */
+function nextAtHome() {
+  if (state !== "idle") return;
+  if (!parked && !visiting) {
+    walk();
+    return;
+  }
+  let act: Mode;
+  if (forcedAct) {
+    act = forcedAct;
+    forcedAct = null;
+  } else if (visiting) {
+    act = Math.random() < 0.6 ? "sleep" : "chew";
+  } else {
+    const r = Math.random();
+    act = r < 0.4 ? "stand" : r < 0.75 ? "sleep" : "chew";
+  }
+  const duration =
+    act === "sleep"
+      ? 40000 + Math.random() * 80000
+      : act === "chew"
+        ? 20000 + Math.random() * 20000
+        : 10000 + Math.random() * 20000;
+  setMode(act);
+  homeTimer = window.setTimeout(() => {
+    visiting = false;
+    setMode("stand");
+    nextAtHome();
+  }, duration);
 }
 
 /** Shorter way round to the parking spot: 1 counter-clockwise, -1 clockwise. */
@@ -421,7 +628,7 @@ function directionToSpot(): number {
 
 function plan() {
   if (state !== "idle") return;
-  if (parked) {
+  if (needHome()) {
     walk();
     return;
   }
@@ -446,11 +653,10 @@ function plan() {
 
 function walk() {
   if (state !== "idle") return;
-  if (parked) {
+  window.clearTimeout(homeTimer);
+  if (needHome()) {
     if (edge === 0 && Math.abs(t - parkingSpot()) < 1) {
-      // Arrived: sit down and stay.
-      setMode("stand");
-      place(t, 0);
+      arriveHome();
       return;
     }
     dir = directionToSpot();
@@ -469,13 +675,14 @@ function walk() {
 
   const stride = 140 + Math.random() * 420;
   let target = dir > 0 ? Math.min(end, t + stride) : Math.max(end, t - stride);
-  if (parked) {
+  if (needHome()) {
     const spot = parkingSpot();
     target = edge === 0 && (spot - t) * dir > 0 ? spot : end;
   }
   walkFrom = t;
   walkTarget = target;
-  walkDuration = (Math.abs(target - t) / (parked ? RUN_SPEED : speed)) * 1000;
+  walkDuration =
+    (Math.abs(target - t) / (needHome() ? RUN_SPEED : speed)) * 1000;
   walkStart = performance.now();
   setMode("walk");
   // Let the browser apply the start position before the transition begins.
@@ -550,6 +757,7 @@ function hideBubble(resume: boolean) {
 /** Stops, sits down and shows one line next to the dog. False if busy. */
 function say(): boolean {
   if (state !== "idle" || talking) return false;
+  if (mode !== "walk" && mode !== "stand") return false;
   freeze();
   setMode("stand");
   let i = Math.floor(Math.random() * LINES.length);
@@ -603,9 +811,109 @@ function toggleBreed() {
     // Not remembered then.
   }
   render();
+  drawHut();
 }
 
-/** A click on the dog parks it at the bottom centre, the next one frees it. */
+const INWARD = [
+  [0, -1],
+  [-1, 0],
+  [0, 1],
+  [1, 0],
+];
+
+/** A little glyph that drifts away from the screen edge and fades. */
+function floatUp(
+  text: string,
+  x: number,
+  y: number,
+  color: string,
+  dx: number,
+  dy: number,
+) {
+  const el = document.createElement("span");
+  el.className = "bot-float";
+  el.textContent = text;
+  el.style.color = color;
+  el.style.left = `${Math.round(x - 7)}px`;
+  el.style.top = `${Math.round(y - 9)}px`;
+  stageEl.appendChild(el);
+  el.animate(
+    [
+      { transform: "translate(0, 0) scale(0.6)", opacity: 0 },
+      { opacity: 1, offset: 0.2 },
+      {
+        transform: `translate(${dx * 42}px, ${dy * 42}px) scale(1.15)`,
+        opacity: 0,
+      },
+    ],
+    { duration: 1500, easing: "ease-out" },
+  );
+  window.setTimeout(() => el.remove(), 1450);
+}
+
+function heart() {
+  const s = stageEl.getBoundingClientRect();
+  const r = botEl.getBoundingClientRect();
+  const [dx, dy] = INWARD[edge];
+  const spread = (Math.random() - 0.5) * 44;
+  const x = r.left - s.left + r.width / 2 + dx * 16 + (dy !== 0 ? spread : 0);
+  const y = r.top - s.top + r.height / 2 + dy * 16 + (dx !== 0 ? spread : 0);
+  floatUp("♥", x, y, "#ff5c8a", dx, dy);
+}
+
+/** Cursor resting on the dog: it holds still to be stroked. */
+function setHover(on: boolean) {
+  if (on === hoverSince > 0) return;
+  if (on) {
+    hoverSince = performance.now();
+    if (state === "idle" && mode === "walk") {
+      freeze();
+      setMode("stand");
+      pettingPause = true;
+    }
+    return;
+  }
+  hoverSince = 0;
+  if (pettingPause) {
+    pettingPause = false;
+    if (state === "idle" && !talking && mode === "stand") {
+      planTimer = window.setTimeout(walk, 600);
+    }
+  }
+}
+
+/** Off to the hut for a nap or a bone, then back to roaming. */
+function visit(kind?: "sleep" | "chew") {
+  forcedAct = kind ?? null;
+  visiting = true;
+  if (state !== "idle" || talking) return;
+  freeze();
+  walk();
+}
+
+function scheduleVisit() {
+  window.clearTimeout(visitTimer);
+  visitTimer = window.setTimeout(
+    () => {
+      if (!parked && state === "idle" && !talking && mode === "walk") visit();
+      scheduleVisit();
+    },
+    360000 + Math.random() * 480000,
+  );
+}
+
+/** A click on the bowl fills it; the dog comes running and eats. */
+function feed() {
+  if (wantFood) return;
+  wantFood = true;
+  drawBowl();
+  hideBubble(false);
+  if (state !== "idle") return;
+  freeze();
+  walk();
+}
+
+/** A click on the dog or its hut keeps it at home, the next one frees it. */
 function togglePark() {
   parked = !parked;
   try {
@@ -620,20 +928,24 @@ function togglePark() {
 }
 
 /**
- * The window lets every click through. Only while the cursor is on the dog
- * does it take clicks itself, so the dog can be clicked and nothing else is
- * ever blocked.
+ * The window lets every click through. Only while the cursor is on the dog,
+ * its hut or its bowl does it take clicks itself, so those can be clicked and
+ * nothing else is ever blocked.
  */
 function updateClickable() {
+  let dogHit = false;
   let hit = false;
   if (cursor) {
-    const r = botEl.getBoundingClientRect();
-    hit =
-      cursor[0] >= r.left &&
-      cursor[0] <= r.right &&
-      cursor[1] >= r.top &&
-      cursor[1] <= r.bottom;
+    const [x, y] = cursor;
+    const inside = (el: HTMLElement) => {
+      const r = el.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    };
+    dogHit = mode !== "sleep" && inside(botEl);
+    hit = dogHit || inside(hutEl) || inside(bowlEl);
   }
+  // In the app the cursor comes from the backend; in a browser from the DOM.
+  if (setClickThrough) setHover(dogHit);
   if (hit === clickable) return;
   clickable = hit;
   setClickThrough?.(!hit);
@@ -658,11 +970,15 @@ window.addEventListener("resize", () => {
   } else {
     t = Math.min(t, edgeLength(edge));
     place(t, 0);
-    if (parked && state === "idle") planTimer = window.setTimeout(walk, 300);
+    if (needHome() && state === "idle") {
+      planTimer = window.setTimeout(walk, 300);
+    }
   }
 });
 
 botEl.addEventListener("click", togglePark);
+hutEl.addEventListener("click", togglePark);
+bowlEl.addEventListener("click", feed);
 botEl.addEventListener("contextmenu", (event) => {
   event.preventDefault();
   toggleBreed();
@@ -674,6 +990,9 @@ async function start() {
   setMode("stand");
   planTimer = window.setTimeout(walk, 800);
   scheduleSay(60000, 120000);
+  scheduleVisit();
+  drawHut();
+  drawBowl();
 
   if ("__TAURI_INTERNALS__" in window) {
     const { listen } = await import("@tauri-apps/api/event");
@@ -698,12 +1017,18 @@ async function start() {
     return;
   }
 
-  // Browser preview: buttons for the states and a made-up voice level.
+  // Browser preview: the DOM tells when the cursor is on the dog.
+  botEl.addEventListener("mouseenter", () => setHover(true));
+  botEl.addEventListener("mouseleave", () => setHover(false));
+
+  // Buttons for the states and a made-up voice level.
   const api = {
     setState,
     setLevel,
     toggleBreed,
     say,
+    visit,
+    feed,
     setSpeed: (value: number) => {
       speed = value;
     },

@@ -512,18 +512,21 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
     }
 }
 
-/// Work area of the primary monitor in logical points: the screen without the
-/// menu bar and the Dock. The bot walks along the edges of this rectangle.
+/// Where the bot lives, in logical points: the primary monitor from below the
+/// menu bar down to the very bottom of the screen, across its full width. The
+/// dog walks along the true screen edge, in front of the Dock.
 #[cfg(target_os = "macos")]
 fn bot_overlay_frame(app_handle: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     let monitor = app_handle.primary_monitor().ok().flatten()?;
     let scale = monitor.scale_factor();
     let wa = monitor.work_area();
+    let top = wa.position.y as f64 / scale;
+    let bottom = (monitor.position().y as f64 + monitor.size().height as f64) / scale;
     Some((
-        wa.position.x as f64 / scale,
-        wa.position.y as f64 / scale,
-        wa.size.width as f64 / scale,
-        wa.size.height as f64 / scale,
+        monitor.position().x as f64 / scale,
+        top,
+        monitor.size().width as f64 / scale,
+        bottom - top,
     ))
 }
 
@@ -642,8 +645,8 @@ pub fn set_bot_overlay_visible(app_handle: &AppHandle, visible: bool) {
     });
 }
 
-/// Re-fits the bot window to the work area, which moves with the Dock and
-/// with displays being plugged in.
+/// Re-fits the bot window to the screen, which changes with displays being
+/// plugged in.
 #[cfg(target_os = "macos")]
 fn fit_bot_overlay(app_handle: &AppHandle) {
     let handle = app_handle.clone();

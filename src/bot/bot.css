@@ -55,6 +55,34 @@ body {
   opacity: 1;
 }
 
+.bot-hut,
+.bot-bowl {
+  position: absolute;
+  bottom: 0;
+  image-rendering: pixelated;
+  cursor: pointer;
+}
+
+.bot-hut {
+  right: 6px;
+}
+
+.bot-bowl {
+  right: 97px;
+}
+
+.bot-float {
+  position: absolute;
+  font:
+    700 15px/1 system-ui,
+    sans-serif;
+  text-shadow:
+    0 0 2px #1a1208,
+    0 1px 0 #1a1208;
+  pointer-events: none;
+  opacity: 0;
+}
+
 /* Browser preview only (no Tauri): a backdrop and state buttons. */
 body.bot-preview {
   background: #2a2f3a;
