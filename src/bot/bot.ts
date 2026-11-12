@@ -47,16 +47,72 @@ const TAIL: [number, number, string][] = [
   [18, 13, "o"],
   [19, 12, "o"],
 ];
-const PALETTE: Record<string, string> = {
-  o: "#5b3a21",
-  g: "#e3a54e",
-  d: "#c98431",
-  l: "#f7dcab",
-  c: "#f7dcab",
-  k: "#2a1b14",
-  p: "#e9788b",
-  E: "#2a1b14",
+type Breed = "golden" | "berner";
+const BREED_KEY = "handy-bot-breed";
+const PALETTES: Record<Breed, Record<string, string>> = {
+  golden: {
+    o: "#5b3a21",
+    g: "#e3a54e",
+    d: "#c98431",
+    l: "#f7dcab",
+    c: "#f7dcab",
+    k: "#2a1b14",
+    p: "#e9788b",
+    E: "#2a1b14",
+  },
+  berner: {
+    o: "#1a1514",
+    g: "#2d2725",
+    d: "#1f1a19",
+    l: "#f6f1e8",
+    c: "#f6f1e8",
+    k: "#120d0c",
+    p: "#e9788b",
+    E: "#120d0c",
+    r: "#b8642a",
+  },
 };
+// The Bernese mountain dog's markings on top of the shared sprites: rust
+// eyebrows, cheeks and paws, a white blaze (front) and a white chest (side).
+const BERNER_FRONT: [number, number, string][] = [
+  [6, 3, "r"],
+  [7, 3, "r"],
+  [13, 3, "r"],
+  [14, 3, "r"],
+  [4, 6, "r"],
+  [16, 6, "r"],
+  [5, 7, "r"],
+  [15, 7, "r"],
+  [4, 15, "r"],
+  [16, 15, "r"],
+  [9, 1, "l"],
+  [10, 1, "l"],
+  [11, 1, "l"],
+  [9, 2, "l"],
+  [10, 2, "l"],
+  [11, 2, "l"],
+  [10, 3, "l"],
+  [9, 3, "l"],
+  [11, 3, "l"],
+];
+const BERNER_SIDE: [number, number, string][] = [
+  [16, 2, "r"],
+  [18, 6, "r"],
+  [17, 7, "r"],
+  [18, 7, "r"],
+  [16, 10, "l"],
+  [17, 10, "l"],
+  [16, 11, "l"],
+  [17, 11, "l"],
+  [17, 12, "l"],
+];
+let breed: Breed = "golden";
+try {
+  if (window.localStorage.getItem(BREED_KEY) === "berner") breed = "berner";
+} catch {
+  // No storage: golden retriever it is.
+}
+let PALETTE = PALETTES[breed];
 const WAVE = "#ffffff";
 const WAVE_OUTLINE = "#1a1208";
 const OX = 8; // sprite's left column inside the grid
@@ -211,6 +267,11 @@ function renderWalk() {
       set(SX + x, SY + y + dy, PALETTE[ch]);
     }
   }
+  if (breed === "berner") {
+    for (const [x, y, ch] of BERNER_SIDE) {
+      set(SX + x, SY + y + (y < SIDE_HEAD_ROWS ? hy : 0), PALETTE[ch]);
+    }
+  }
   // Tongue hanging out in front of the chest, flapping a little.
   rect(SX + 20, SY + 8 + hy, 2, frame % 4 < 2 ? 2 : 1, PALETTE.p);
 }
@@ -240,6 +301,14 @@ function render() {
         set(OX + x, OY + y, PALETTE[ch]);
       }
     });
+    if (breed === "berner") {
+      for (const [x, y, ch] of BERNER_FRONT) {
+        // Not where the pricked-up ear has left the cheek bare.
+        if (mode === "listen" && x <= 4 && y >= 4 && y <= 7) continue;
+        if (eyesShut && y === 3) continue;
+        set(OX + x, OY + y, PALETTE[ch]);
+      }
+    }
   }
 
   if (mode === "listen") {
@@ -421,6 +490,7 @@ function walk() {
 
 function setState(next: BotState) {
   if (next === state) return;
+  hideBubble(false);
   state = next;
   window.clearTimeout(thinkTimer);
   freeze();
@@ -436,6 +506,105 @@ function setState(next: BotState) {
   }
 }
 
+// Now and then the dog says something kind to Gina in a small speech bubble.
+const LINES = [
+  "Gina, du bist die Beste. Wuff!",
+  "Jos hat dich ganz doll lieb, Gina.",
+  "Hab ich schon gesagt, wie toll du bist, Gina?",
+  "Gina, mit dir ist jeder Tag schöner.",
+  "Ich wedel nur für dich, Gina.",
+  "Gina, du schaffst heute alles.",
+  "Jos denkt gerade an dich, Gina.",
+  "Du hast das schönste Lächeln, Gina.",
+  "Gina, trink mal einen Schluck Wasser.",
+  "Pfote drauf: Gina ist wunderbar.",
+  "Gina, ich bin stolz auf dich.",
+  "Kurze Pause, Gina? Du hast sie verdient.",
+  "Jos kann sein Glück kaum fassen, Gina.",
+  "Gina, du bist mein Lieblingsmensch.",
+  "Schön, dass es dich gibt, Gina.",
+  "Gina, du machst das richtig gut.",
+  "Ein Herzchen für Gina! ♥",
+  "Gina, mit dir gehe ich überall Gassi.",
+  "Jos liebt dich, Gina. Ich auch. Wuff!",
+  "Gina, du bist klüger, als du denkst.",
+  "Gina, heute siehst du wieder toll aus.",
+  "Für dich hole ich jedes Stöckchen, Gina.",
+];
+const bubbleEl = document.createElement("div");
+bubbleEl.className = "bot-bubble";
+stageEl.appendChild(bubbleEl);
+let talking = false;
+let lastLine = -1;
+let sayTimer: number | undefined;
+let hideTimer: number | undefined;
+
+function hideBubble(resume: boolean) {
+  window.clearTimeout(hideTimer);
+  if (!talking) return;
+  talking = false;
+  bubbleEl.classList.remove("show");
+  if (resume && state === "idle") planTimer = window.setTimeout(walk, 400);
+}
+
+/** Stops, sits down and shows one line next to the dog. False if busy. */
+function say(): boolean {
+  if (state !== "idle" || talking) return false;
+  freeze();
+  setMode("stand");
+  let i = Math.floor(Math.random() * LINES.length);
+  if (i === lastLine) i = (i + 1) % LINES.length;
+  lastLine = i;
+  bubbleEl.textContent = LINES[i];
+
+  // Towards the inside of the screen, next to the dog, never off screen.
+  const s = stageEl.getBoundingClientRect();
+  const r = botEl.getBoundingClientRect();
+  const bw = bubbleEl.offsetWidth;
+  const bh = bubbleEl.offsetHeight;
+  const gap = BOX * 0.66;
+  const cx = r.left - s.left + r.width / 2;
+  const cy = r.top - s.top + r.height / 2;
+  let x = cx - bw / 2;
+  let y = cy - bh / 2;
+  if (edge === 0) y = s.height - gap - bh;
+  else if (edge === 2) y = gap;
+  else if (edge === 1) x = s.width - gap - bw;
+  else x = gap;
+  x = Math.max(6, Math.min(s.width - bw - 6, x));
+  y = Math.max(6, Math.min(s.height - bh - 6, y));
+  bubbleEl.style.left = `${Math.round(x)}px`;
+  bubbleEl.style.top = `${Math.round(y)}px`;
+  bubbleEl.classList.add("show");
+  talking = true;
+  hideTimer = window.setTimeout(() => hideBubble(true), 6500);
+  return true;
+}
+
+function scheduleSay(min: number, max: number) {
+  window.clearTimeout(sayTimer);
+  sayTimer = window.setTimeout(
+    () => {
+      // Every 5 to 12 minutes; if the dog is busy, try again shortly.
+      if (say()) scheduleSay(300000, 720000);
+      else scheduleSay(30000, 60000);
+    },
+    min + Math.random() * (max - min),
+  );
+}
+
+/** A right-click on the dog swaps golden retriever and Bernese mountain dog. */
+function toggleBreed() {
+  breed = breed === "golden" ? "berner" : "golden";
+  PALETTE = PALETTES[breed];
+  try {
+    window.localStorage.setItem(BREED_KEY, breed);
+  } catch {
+    // Not remembered then.
+  }
+  render();
+}
+
 /** A click on the dog parks it at the bottom centre, the next one frees it. */
 function togglePark() {
   parked = !parked;
@@ -444,6 +613,7 @@ function togglePark() {
   } catch {
     // Not remembered then.
   }
+  hideBubble(false);
   if (state !== "idle") return;
   freeze();
   walk();
@@ -480,6 +650,7 @@ function fromBackend(value: string): BotState {
 }
 
 window.addEventListener("resize", () => {
+  hideBubble(false);
   if (mode === "walk") {
     freeze();
     setMode("stand");
@@ -492,12 +663,17 @@ window.addEventListener("resize", () => {
 });
 
 botEl.addEventListener("click", togglePark);
+botEl.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  toggleBreed();
+});
 
 async function start() {
   t = Math.random() * edgeLength(0);
   place(t, 0);
   setMode("stand");
   planTimer = window.setTimeout(walk, 800);
+  scheduleSay(60000, 120000);
 
   if ("__TAURI_INTERNALS__" in window) {
     const { listen } = await import("@tauri-apps/api/event");
@@ -526,6 +702,8 @@ async function start() {
   const api = {
     setState,
     setLevel,
+    toggleBreed,
+    say,
     setSpeed: (value: number) => {
       speed = value;
     },

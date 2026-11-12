@@ -32,6 +32,29 @@ body {
   image-rendering: pixelated;
 }
 
+.bot-bubble {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: 190px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 2px solid #5b3a21;
+  background: #fffdf7;
+  color: #2a1b14;
+  font:
+    600 12px/1.35 system-ui,
+    -apple-system,
+    sans-serif;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.bot-bubble.show {
+  opacity: 1;
+}
+
 /* Browser preview only (no Tauri): a backdrop and state buttons. */
 body.bot-preview {
   background: #2a2f3a;
