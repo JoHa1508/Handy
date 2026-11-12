@@ -151,9 +151,9 @@ const SIDE = [
   "............ggggggg.....",
   "........gggggggggg......",
   ".....ggggggggggggg......",
-  "...gggggggggggggggl.....",
-  "....ggggggggggggglll....",
-  "....gggggggggggggll.....",
+  "...ggggggggggggggg......",
+  "....gggggggggggggg......",
+  "....gggggggggggggg......",
   "....gggllllllllggg......",
 ];
 const SIDE_HEAD_ROWS = 9;
@@ -187,8 +187,8 @@ function renderWalk() {
   const legs: [number, boolean][] = [
     [4, step === 1],
     [7, step === 3],
-    [14, step === 3],
-    [17, step === 1],
+    [13, step === 3],
+    [16, step === 1],
   ];
   for (const [x, lifted] of legs) {
     if (lifted) {
@@ -211,8 +211,8 @@ function renderWalk() {
       set(SX + x, SY + y + dy, PALETTE[ch]);
     }
   }
-  // Tongue out while trotting along.
-  if (frame % 8 < 4) rect(SX + 19, SY + 8 + hy, 1, 2, PALETTE.p);
+  // A small tongue tip at the mouth while trotting along.
+  if (frame % 8 < 4) set(SX + 20, SY + 8 + hy, PALETTE.p);
 }
 
 function render() {
