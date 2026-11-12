@@ -1,5 +1,5 @@
-// Pixel bot that walks along the screen edge, listens while the user dictates
-// and thinks while the text is being produced. Runs in the `bot_overlay`
+// Pixel golden retriever that walks along the screen edge, listens while the
+// user dictates and thinks while the text is being produced. Runs in the `bot_overlay`
 // window (see src-tauri/src/overlay.rs). Opened in a plain browser it shows a
 // preview with buttons instead of listening for Tauri events.
 
@@ -9,40 +9,15 @@ type Mode = "walk" | "stand" | "listen" | "think";
 const GRID = 32; // sprite canvas, in cells
 const BOX = 64; // sprite box on screen, in CSS px (2 px per cell)
 let speed = 26; // walking speed, CSS px per second
-const OX = 5; // sprite's left column inside the grid
 
 const COLOR = {
-  hi: "#a9d6ff",
-  head: "#5aa9ff",
-  shade: "#3a7bd5",
-  arm: "#2c5fb0",
-  screen: "#131a2e",
-  eye: "#7df9ff",
-  eyeDim: "#2e6f8a",
-  horn: "#ffc94d",
+  gold: "#e8a93c",
+  light: "#f7d083",
+  dark: "#b9781f",
+  ink: "#2a1a0e",
+  tongue: "#f27b8a",
   wave: "#ffffff",
-  outline: "#0e1424",
-};
-
-const HEAD = [
-  ".....HHHH.....",
-  "..HHHBBBBHHH..",
-  ".HBBBBBBBBBBB.",
-  "HBBBBBBBBBBBBB",
-  "BBDDDDDDDDDDBB",
-  "BBDDDDDDDDDDBB",
-  "BBDDDDDDDDDDBB",
-  "BBDDDDDDDDDDBB",
-  "BBDDDDDDDDDDBB",
-  "BBBBBBBBBBBBBS",
-  ".SBBBBBBBBBBS.",
-  "..SSSSSSSSSS..",
-];
-const HEAD_COLOR: Record<string, string> = {
-  H: COLOR.hi,
-  B: COLOR.head,
-  S: COLOR.shade,
-  D: COLOR.screen,
+  outline: "#1a1208",
 };
 
 // Rotation of the sprite per edge, so the feet always touch the screen edge.
@@ -107,97 +82,101 @@ function rect(x: number, y: number, w: number, h: number, color: string) {
     for (let i = 0; i < w; i++) set(x + i, y + j, color);
 }
 
+// The dog is drawn from the side, facing right, paws on row 30.
 function render() {
   grid.fill(null);
   const walking = mode === "walk";
+  const sitting = mode === "listen" || mode === "think";
   const step = walking ? frame % 4 : 0;
-  const bob = step % 2 === 1 ? -1 : 0;
+  const wag = frame % 2 === 1;
 
-  // Legs and feet.
-  for (const [x, lifted] of [
-    [OX + 4, step === 1],
-    [OX + 8, step === 3],
-  ] as [number, boolean][]) {
-    if (lifted) {
-      rect(x, 28, 1, 1, COLOR.shade);
-      rect(x, 29, 2, 1, COLOR.shade);
+  if (sitting) {
+    // Tail on the ground, wagging faster the louder the voice.
+    if (wag && (mode === "think" || level > 0.06)) {
+      rect(6, 27, 3, 2, COLOR.gold);
+      rect(5, 25, 2, 2, COLOR.gold);
     } else {
-      rect(x, 28, 1, 2, COLOR.shade);
-      rect(x, 30, 2, 1, COLOR.shade);
+      rect(5, 28, 5, 2, COLOR.gold);
     }
-  }
-
-  // Body, then the arm that hangs down on the left.
-  rect(OX + 3, 24, 8, 4, COLOR.shade);
-  rect(OX + 2, 25, 1, step === 1 ? 3 : 2, COLOR.arm);
-  if (mode === "walk" || mode === "stand") {
-    rect(OX + 11, 25, 1, step === 3 ? 3 : 2, COLOR.arm);
-  }
-
-  // Head.
-  HEAD.forEach((row, j) => {
-    for (let i = 0; i < row.length; i++) {
-      const color = HEAD_COLOR[row[i]];
-      if (color) set(OX + i, 13 + bob + j, color);
-    }
-  });
-
-  // Face on the screen.
-  const sx = OX + 2;
-  const sy = 17 + bob;
-  if (mode === "think") {
-    const active = frame % 3;
-    for (let i = 0; i < 3; i++) {
-      const on = i === active;
-      rect(
-        sx + 1 + i * 3,
-        sy + (on ? 1 : 2),
-        2,
-        1,
-        on ? COLOR.eye : COLOR.eyeDim,
-      );
-    }
+    // Haunch, chest and front legs.
+    rect(9, 24, 7, 6, COLOR.gold);
+    rect(10, 30, 7, 1, COLOR.light);
+    rect(14, 20, 6, 8, COLOR.gold);
+    rect(17, 23, 3, 4, COLOR.light);
+    rect(18, 27, 2, 3, COLOR.gold);
+    rect(18, 30, 3, 1, COLOR.light);
   } else {
-    const blinking = performance.now() < blinkUntil;
-    const look = walking ? 1 : 0;
-    const top = mode === "listen" ? 1 : blinking ? 2 : 1;
-    const height = mode === "listen" ? 3 : blinking ? 1 : 2;
-    rect(sx + 2 + look, sy + top, 2, height, COLOR.eye);
-    rect(sx + 6 + look, sy + top, 2, height, COLOR.eye);
+    // Tail up, wagging while walking.
+    if (walking && wag) {
+      rect(6, 21, 2, 2, COLOR.gold);
+      rect(4, 20, 3, 2, COLOR.gold);
+    } else {
+      rect(6, 20, 2, 3, COLOR.gold);
+      rect(5, 18, 2, 3, COLOR.gold);
+    }
+    // Four legs; diagonal pairs lift in turn.
+    const legs: [number, boolean][] = [
+      [8, step === 1],
+      [11, step === 3],
+      [17, step === 3],
+      [20, step === 1],
+    ];
+    for (const [x, lifted] of legs) {
+      if (lifted) {
+        rect(x + 1, 27, 2, 2, COLOR.gold);
+        rect(x + 1, 29, 2, 1, COLOR.light);
+      } else {
+        rect(x, 27, 2, 3, COLOR.gold);
+        rect(x, 30, 2, 1, COLOR.light);
+      }
+    }
+    // Body with a lighter belly.
+    rect(8, 22, 14, 5, COLOR.gold);
+    rect(10, 26, 9, 1, COLOR.light);
   }
+
+  // Neck and head; the head bobs a little while walking.
+  const hy = walking && step % 2 === 1 ? 1 : 0;
+  rect(17, 19, 4, 4, COLOR.gold);
+  rect(19, 14 + hy, 5, 1, COLOR.gold);
+  rect(18, 15 + hy, 7, 6, COLOR.gold);
+  // Muzzle, nose, eye.
+  rect(24, 17 + hy, 4, 3, COLOR.light);
+  set(27, 17 + hy, COLOR.ink);
+  const blinking = performance.now() < blinkUntil;
+  if (mode === "think" || blinking) {
+    rect(21, 17 + hy, 2, 1, COLOR.dark);
+  } else {
+    set(22, 16 + hy, COLOR.ink);
+  }
+  // Tongue out while trotting along.
+  if (walking && frame % 8 < 4) rect(25, 20 + hy, 1, 2, COLOR.tongue);
 
   if (mode === "listen") {
-    // Arm up to the ear, holding a little ear trumpet.
-    set(OX + 11, 25, COLOR.arm);
-    set(OX + 12, 24, COLOR.hi);
-    set(OX + 13, 23, COLOR.hi);
-    rect(OX + 14, 20, 1, 3, COLOR.hi);
-    rect(OX + 14, 18, 1, 2, COLOR.horn);
-    rect(OX + 15, 17, 1, 4, COLOR.horn);
-    rect(OX + 16, 16, 1, 6, COLOR.horn);
-    rect(OX + 17, 15, 1, 8, COLOR.horn);
-    // Sound arcs: more of them the louder the voice.
+    // Ear pricked up, sound arcs arriving at it: more the louder the voice.
+    rect(18, 11, 2, 5, COLOR.dark);
     const arcs = level > 0.5 ? 3 : level > 0.22 ? 2 : level > 0.06 ? 1 : 0;
     for (let k = 0; k < arcs; k++) {
-      const x = OX + 19 + k * 3;
+      const x = 15 - k * 3;
       const half = 1 + k;
-      set(x - 1, 18 - half, COLOR.wave);
-      rect(x, 19 - half, 1, half * 2, COLOR.wave);
-      set(x - 1, 19 + half, COLOR.wave);
+      set(x + 1, 12 - half, COLOR.wave);
+      rect(x, 13 - half, 1, half * 2, COLOR.wave);
+      set(x + 1, 13 + half, COLOR.wave);
     }
+  } else {
+    // Floppy ear.
+    rect(18, 15 + hy, 2, 5, COLOR.dark);
   }
 
   if (mode === "think") {
-    // Hand at the chin and thought bubbles rising above the head.
-    rect(OX + 11, 24, 1, 3, COLOR.arm);
-    rect(OX + 8, 24, 3, 1, COLOR.hi);
+    // Thought bubbles rising above the head.
     const bubbles = frame % 4;
-    if (bubbles >= 1) rect(OX + 13, 10, 1, 1, COLOR.wave);
-    if (bubbles >= 2) rect(OX + 15, 6, 2, 2, COLOR.wave);
-    if (bubbles >= 3) rect(OX + 18, 1, 3, 3, COLOR.wave);
+    if (bubbles >= 1) rect(25, 11, 1, 1, COLOR.wave);
+    if (bubbles >= 2) rect(26, 7, 2, 2, COLOR.wave);
+    if (bubbles >= 3) rect(26, 2, 3, 3, COLOR.wave);
   }
 
-  // Dark outline so the bot reads on light and dark windows alike.
+  // Dark outline so the dog reads on light and dark windows alike.
   const outline: number[] = [];
   for (let y = 0; y < GRID; y++) {
     for (let x = 0; x < GRID; x++) {
@@ -212,8 +191,8 @@ function render() {
   }
   for (const i of outline) grid[i] = COLOR.outline;
 
-  // Mirror when walking clockwise so the bot faces where it goes.
-  const flip = dir < 0 && (mode === "walk" || mode === "stand");
+  // Mirror when walking clockwise so the dog faces where it goes.
+  const flip = dir < 0;
   ctx.clearRect(0, 0, GRID, GRID);
   for (let y = 0; y < GRID; y++) {
     for (let x = 0; x < GRID; x++) {
