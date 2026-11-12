@@ -7,7 +7,7 @@ type BotState = "idle" | "listen" | "think";
 type Mode = "walk" | "stand" | "listen" | "think";
 
 const GRID = 32; // sprite canvas, in cells
-const BOX = 64; // sprite box on screen, in CSS px (2 px per cell)
+const BOX = 80; // sprite box on screen, in CSS px (2.5 px per cell)
 let speed = 26; // walking speed, CSS px per second
 
 // The golden retriever from Jos's "Mathe für Gina" mascot: left half of each
@@ -122,32 +122,82 @@ function rect(x: number, y: number, w: number, h: number, color: string) {
     for (let i = 0; i < w; i++) set(x + i, y + j, color);
 }
 
-// The dog sits facing the viewer, exactly as in the mascot. It hops along the
-// edge, pricks up an ear to listen and closes its eyes to think.
+// Standing still the dog sits facing the viewer, exactly as in the mascot. On
+// the move it is drawn from the side in the same palette, with a walk cycle.
+function renderWalk() {
+  const step = frame % 4;
+  const wag = frame % 2 === 1;
+  const hy = step % 2 === 1 ? 1 : 0;
+
+  // Tail up, wagging.
+  if (wag) {
+    rect(6, 21, 2, 2, PALETTE.g);
+    rect(4, 20, 3, 2, PALETTE.g);
+  } else {
+    rect(6, 20, 2, 3, PALETTE.g);
+    rect(5, 18, 2, 3, PALETTE.g);
+  }
+  // Four legs; diagonal pairs lift in turn.
+  const legs: [number, boolean][] = [
+    [8, step === 1],
+    [11, step === 3],
+    [16, step === 3],
+    [19, step === 1],
+  ];
+  for (const [x, lifted] of legs) {
+    if (lifted) {
+      rect(x + 1, 27, 2, 2, PALETTE.g);
+      rect(x + 1, 29, 2, 1, PALETTE.l);
+    } else {
+      rect(x, 27, 2, 3, PALETTE.g);
+      rect(x, 30, 2, 1, PALETTE.l);
+    }
+  }
+  // Body with a lighter belly, neck.
+  rect(8, 22, 13, 5, PALETTE.g);
+  rect(10, 26, 8, 1, PALETTE.l);
+  rect(17, 19, 4, 4, PALETTE.g);
+  // Big head like the mascot's: floppy dark ear, light muzzle, dark nose.
+  rect(18, 11 + hy, 6, 1, PALETTE.g);
+  rect(17, 12 + hy, 8, 7, PALETTE.g);
+  rect(17, 12 + hy, 3, 6, PALETTE.d);
+  rect(23, 15 + hy, 5, 3, PALETTE.l);
+  set(27, 15 + hy, PALETTE.k);
+  if (performance.now() < blinkUntil) {
+    set(22, 14 + hy, PALETTE.o);
+  } else {
+    rect(22, 13 + hy, 1, 2, PALETTE.E);
+  }
+  // Tongue out while trotting along.
+  if (frame % 8 < 4) rect(25, 18 + hy, 1, 2, PALETTE.p);
+}
+
 function render() {
   grid.fill(null);
   const walking = mode === "walk";
-  const hop = walking && frame % 2 === 1 ? -1 : 0;
-  const wagging =
-    walking || mode === "think" || (mode === "listen" && level > 0.06);
+  const wagging = mode === "think" || (mode === "listen" && level > 0.06);
   const wag = wagging && frame % 2 === 1 ? -1 : 0;
   const eyesShut = mode === "think" || performance.now() < blinkUntil;
 
-  for (const [x, y, ch] of TAIL) set(OX + x, OY + y + hop + wag, PALETTE[ch]);
+  if (walking) {
+    renderWalk();
+  } else {
+    for (const [x, y, ch] of TAIL) set(OX + x, OY + y + wag, PALETTE[ch]);
 
-  ROWS.forEach((row, y) => {
-    for (let x = 0; x < row.length; x++) {
-      let ch = row[x];
-      if (ch === ".") continue;
-      if (ch === "E" && eyesShut) ch = y === 4 ? "g" : "o";
-      if (mode === "listen" && x <= 4 && y >= 4 && y <= 7) {
-        // The left ear no longer hangs down here; close the head's outline.
-        if (x < 4) continue;
-        ch = "o";
+    ROWS.forEach((row, y) => {
+      for (let x = 0; x < row.length; x++) {
+        let ch = row[x];
+        if (ch === ".") continue;
+        if (ch === "E" && eyesShut) ch = y === 4 ? "g" : "o";
+        if (mode === "listen" && x <= 4 && y >= 4 && y <= 7) {
+          // The left ear no longer hangs down here; close the head's outline.
+          if (x < 4) continue;
+          ch = "o";
+        }
+        set(OX + x, OY + y, PALETTE[ch]);
       }
-      set(OX + x, OY + y + hop, PALETTE[ch]);
-    }
-  });
+    });
+  }
 
   if (mode === "listen") {
     // Left ear pricked up, sound arcs arriving at it: more the louder.
@@ -172,28 +222,26 @@ function render() {
     if (bubbles >= 3) rect(OX + 17, OY - 12, 3, 3, WAVE);
   }
 
-  // The dog brings its own outline; arcs and bubbles get a dark one so they
-  // read on light windows too.
-  const outline: number[] = [];
-  const isWave = (x: number, y: number) =>
-    x >= 0 && y >= 0 && x < GRID && y < GRID && grid[y * GRID + x] === WAVE;
+  // The sitting dog brings its own outline; the walking one gets it here.
+  // Arcs and bubbles get a dark one so they read on light windows too.
+  const outline: [number, string][] = [];
+  const at = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < GRID && y < GRID ? grid[y * GRID + x] : null;
   for (let y = 0; y < GRID; y++) {
     for (let x = 0; x < GRID; x++) {
       if (grid[y * GRID + x]) continue;
-      if (
-        isWave(x - 1, y) ||
-        isWave(x + 1, y) ||
-        isWave(x, y - 1) ||
-        isWave(x, y + 1)
-      ) {
-        outline.push(y * GRID + x);
+      const around = [at(x - 1, y), at(x + 1, y), at(x, y - 1), at(x, y + 1)];
+      if (around.includes(WAVE)) {
+        outline.push([y * GRID + x, WAVE_OUTLINE]);
+      } else if (walking && around.some((c) => c)) {
+        outline.push([y * GRID + x, PALETTE.o]);
       }
     }
   }
-  for (const i of outline) grid[i] = WAVE_OUTLINE;
+  for (const [i, color] of outline) grid[i] = color;
 
-  // The tail trails behind: mirror when walking counter-clockwise.
-  const flip = dir > 0;
+  // Walking, the dog faces where it goes. Sitting, its tail trails behind.
+  const flip = walking ? dir < 0 : dir > 0;
   ctx.clearRect(0, 0, GRID, GRID);
   for (let y = 0; y < GRID; y++) {
     for (let x = 0; x < GRID; x++) {
@@ -207,7 +255,7 @@ function render() {
 
 // Few frames per second on purpose: the window is always on screen.
 const TICK_MS: Record<Mode, number> = {
-  walk: 190,
+  walk: 150,
   stand: 500,
   listen: 100,
   think: 260,

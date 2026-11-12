@@ -19,16 +19,16 @@ body {
   position: absolute;
   top: 0;
   left: 0;
-  width: 64px;
-  height: 64px;
+  width: 80px;
+  height: 80px;
   will-change: transform;
   pointer-events: none;
 }
 
 #sprite {
   display: block;
-  width: 64px;
-  height: 64px;
+  width: 80px;
+  height: 80px;
   image-rendering: pixelated;
 }
 
