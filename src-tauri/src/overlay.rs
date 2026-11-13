@@ -572,6 +572,58 @@ fn watch_cursor_for_bot(app_handle: &AppHandle) {
     });
 }
 
+/// The edge bot's dog, "golden" or "berner". The bot page remembers it and
+/// reports it at start; the tray menu shows and changes it.
+static BOT_BREED: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+fn valid_breed(breed: &str) -> bool {
+    matches!(breed, "golden" | "berner")
+}
+
+/// The dog the tray menu shows as checked.
+pub fn bot_breed() -> String {
+    BOT_BREED
+        .lock()
+        .ok()
+        .map(|breed| breed.clone())
+        .filter(|breed| valid_breed(breed))
+        .unwrap_or_else(|| "golden".to_string())
+}
+
+/// Switches the dog from the tray menu.
+pub fn set_bot_breed(app_handle: &AppHandle, breed: &str) {
+    if !valid_breed(breed) {
+        return;
+    }
+    if let Ok(mut current) = BOT_BREED.lock() {
+        *current = breed.to_string();
+    }
+    let _ = app_handle.emit_to(BOT_OVERLAY_LABEL, "bot-breed", breed);
+}
+
+/// Keeps the tray's check mark in line with the dog the bot page shows,
+/// also when it is switched there by a right-click.
+#[cfg(target_os = "macos")]
+fn follow_bot_breed(app_handle: &AppHandle) {
+    use tauri::Listener;
+    let handle = app_handle.clone();
+    app_handle.listen_any("bot-breed-current", move |event| {
+        let Ok(breed) = serde_json::from_str::<String>(event.payload()) else {
+            return;
+        };
+        if !valid_breed(&breed) {
+            return;
+        }
+        if let Ok(mut current) = BOT_BREED.lock() {
+            if *current == breed {
+                return;
+            }
+            *current = breed;
+        }
+        crate::tray::update_tray_menu(&handle);
+    });
+}
+
 /// Creates the bot panel: transparent, click-through, on every Space. Shown
 /// right away unless the overlay is switched off (`overlay_style: none`).
 #[cfg(target_os = "macos")]
@@ -617,6 +669,7 @@ pub fn create_bot_overlay(app_handle: &AppHandle) {
                     let _ = window.show();
                 }
                 watch_cursor_for_bot(app_handle);
+                follow_bot_breed(app_handle);
             }
         }
         Err(e) => {

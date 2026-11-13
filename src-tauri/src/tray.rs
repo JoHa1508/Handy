@@ -72,6 +72,8 @@ struct MenuInputs {
     update_checks_enabled: bool,
     /// The language submenu, when the selected model has languages to pick.
     language: Option<LanguageMenu>,
+    /// The edge bot's dog: "golden" or "berner".
+    bot_breed: String,
 }
 
 /// What the language submenu shows: `(code, name)` entries, with codes as
@@ -394,6 +396,7 @@ fn compute_desired(app: &AppHandle, icon_state: TrayIconState) -> TrayDesired {
             locale: settings.app_language,
             update_checks_enabled: settings.update_checks_enabled,
             language,
+            bot_breed: crate::overlay::bot_breed(),
         },
     }
 }
@@ -505,6 +508,25 @@ fn language_submenu(
             others.append(&item(code, name, true)?)?;
         }
         submenu.append(&others)?;
+    }
+    Ok(submenu)
+}
+
+/// "Hund" with the two dogs of the edge bot, the current one checked.
+fn bot_breed_submenu(app: &AppHandle, current: &str) -> tauri::Result<Submenu<tauri::Wry>> {
+    let submenu = Submenu::with_id(app, "bot_breed_submenu", "Hund", true)?;
+    for (id, name) in [
+        ("golden", "Golden Retriever"),
+        ("berner", "Berner Sennenhund"),
+    ] {
+        submenu.append(&CheckMenuItem::with_id(
+            app,
+            format!("bot_breed:{id}"),
+            name,
+            true,
+            current == id,
+            None::<&str>,
+        )?)?;
     }
     Ok(submenu)
 }
@@ -755,6 +777,14 @@ fn build_menu(app: &AppHandle, inputs: &MenuInputs) -> tauri::Result<(Menu<tauri
         if let Some(language) = &inputs.language {
             menu.insert(&language_submenu(app, &strings, language)?, 5)?;
         }
+        // The dog picker sits right above the settings entry.
+        let settings_at = menu
+            .items()?
+            .iter()
+            .position(|item| item.id().0 == "settings")
+            .unwrap_or(0);
+        menu.insert(&bot_breed_submenu(app, &inputs.bot_breed)?, settings_at)?;
+        menu.insert(&separator()?, settings_at + 1)?;
         menu
     };
 
@@ -989,6 +1019,7 @@ mod tests {
             locale: "en".to_string(),
             update_checks_enabled: true,
             language: None,
+            bot_breed: "golden".to_string(),
         }
     }
 

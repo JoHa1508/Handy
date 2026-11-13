@@ -330,6 +330,11 @@ fn initialize_core_logic(app_handle: &AppHandle) {
             "quit" => {
                 app.exit(0);
             }
+            id if id.starts_with("bot_breed:") => {
+                let breed = id.strip_prefix("bot_breed:").unwrap_or("golden");
+                overlay::set_bot_breed(app, breed);
+                tray::rebuild_tray_menu(app);
+            }
             id if id.starts_with("model_select:") => {
                 let model_id = id.strip_prefix("model_select:").unwrap().to_string();
                 let current_model = settings::get_settings(app).selected_model;

@@ -810,10 +810,13 @@ function scheduleSay(min: number, max: number) {
   );
 }
 
-/** A right-click on the dog swaps golden retriever and Bernese mountain dog. */
-function toggleBreed() {
-  breed = breed === "golden" ? "berner" : "golden";
+let reportBreed: ((value: Breed) => void) | undefined;
+
+/** Shows the given dog, remembers it and tells the tray menu. */
+function setBreed(next: Breed) {
+  breed = next;
   PALETTE = PALETTES[breed];
+  reportBreed?.(breed);
   try {
     window.localStorage.setItem(BREED_KEY, breed);
   } catch {
@@ -821,6 +824,11 @@ function toggleBreed() {
   }
   render();
   drawHut();
+}
+
+/** A right-click on the dog swaps golden retriever and Bernese mountain dog. */
+function toggleBreed() {
+  setBreed(breed === "golden" ? "berner" : "golden");
 }
 
 const INWARD = [
@@ -1046,7 +1054,16 @@ async function start() {
   });
 
   if ("__TAURI_INTERNALS__" in window) {
-    const { listen } = await import("@tauri-apps/api/event");
+    const { listen, emit } = await import("@tauri-apps/api/event");
+    reportBreed = (value) => {
+      void emit("bot-breed-current", value);
+    };
+    reportBreed(breed);
+    await listen<string>("bot-breed", (event) => {
+      if (event.payload === "golden" || event.payload === "berner") {
+        if (event.payload !== breed) setBreed(event.payload);
+      }
+    });
     await listen<string>("bot-state", (event) => {
       setState(fromBackend(event.payload));
     });
