@@ -109,3 +109,394 @@ body.bot-preview {
   color: #fff;
   cursor: pointer;
 }
+
+/* ---- Focus timer: panel (centre peek), pill above the hut, strip on the roof ---- */
+
+:root {
+  --f-surface: #ffffff;
+  --f-bg: #fcfbfa;
+  --f-text: #1b1b1a;
+  --f-muted: #8a8884;
+  --f-border: #e4e2dd;
+  --f-accent: #202c50;
+  --f-on-accent: #ffffff;
+  --f-scrim: rgba(20, 20, 22, 0.18);
+  --f-font:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --f-surface: #202022;
+    --f-bg: #19191b;
+    --f-text: #ececed;
+    --f-muted: #9a9da3;
+    --f-border: #2c2c2f;
+    --f-accent: #8aa6da;
+    --f-on-accent: #19191b;
+    --f-scrim: rgba(0, 0, 0, 0.32);
+  }
+}
+
+.focus-backdrop,
+.focus-panel,
+.focus-pill,
+.focus-strip {
+  font-family: var(--f-font);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease-out,
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s linear 180ms;
+}
+
+.focus-backdrop.show,
+.focus-panel.show,
+.focus-pill.show,
+.focus-strip.show {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity 180ms ease-out,
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s;
+}
+
+.focus-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: var(--f-scrim);
+}
+
+.focus-panel {
+  position: absolute;
+  z-index: 11;
+  left: 50%;
+  top: 50%;
+  width: min(340px, calc(100% - 32px));
+  box-sizing: border-box;
+  padding: 18px 20px 16px;
+  border: 1px solid var(--f-border);
+  border-radius: 14px;
+  background: var(--f-surface);
+  color: var(--f-text);
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transform: translate(-50%, -50%) scale(0.96);
+}
+
+.focus-panel.show {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.focus-panel button,
+.focus-pill button,
+.focus-strip {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.focus-panel button:disabled,
+.focus-pill button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.focus-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.focus-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--f-muted);
+}
+
+.focus-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.focus-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.focus-icon:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--f-text) 8%, transparent);
+}
+
+.focus-clock {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.focus-time {
+  text-align: center;
+  font-size: 60px;
+  line-height: 1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.focus-time.done {
+  font-size: 44px;
+  color: var(--f-accent);
+}
+
+.focus-step,
+.focus-chip {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--f-border);
+  border-radius: 8px;
+  background: var(--f-bg);
+  font-size: 13px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.focus-chip.selected {
+  border-color: var(--f-accent);
+  color: var(--f-accent) !important;
+  font-weight: 600 !important;
+}
+
+.focus-step:hover:not(:disabled),
+.focus-chip:hover:not(:disabled) {
+  border-color: var(--f-muted);
+}
+
+.focus-music {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.focus-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 14px !important;
+}
+
+.focus-switch-track {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--f-border);
+  transition: background 150ms ease;
+}
+
+.focus-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 150ms ease;
+}
+
+.focus-switch[aria-checked="true"] .focus-switch-track {
+  background: var(--f-accent);
+}
+
+.focus-switch[aria-checked="true"] .focus-switch-knob {
+  transform: translateX(14px);
+}
+
+.focus-volume {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--f-accent);
+}
+
+.focus-hint {
+  margin: -6px 0 0;
+  font-size: 12px;
+  color: var(--f-muted);
+}
+
+.focus-start {
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--f-accent);
+  color: var(--f-on-accent) !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+}
+
+.focus-start.running {
+  background: transparent;
+  border: 1px solid var(--f-accent);
+  color: var(--f-accent) !important;
+}
+
+.focus-reset {
+  align-self: center;
+  margin-top: -6px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  font-size: 13px !important;
+  color: var(--f-muted) !important;
+}
+
+.focus-pill {
+  position: absolute;
+  z-index: 9;
+  right: 8px;
+  bottom: 90px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--f-border);
+  border-radius: 999px;
+  background: var(--f-surface);
+  color: var(--f-text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  transform: translateY(6px);
+}
+
+.focus-pill.show {
+  transform: translateY(0);
+}
+
+.focus-pill-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-pill-time:hover {
+  background: color-mix(in srgb, var(--f-text) 8%, transparent);
+}
+
+.focus-pill.done .focus-pill-time {
+  color: var(--f-accent);
+}
+
+.focus-ring {
+  width: 20px;
+  height: 20px;
+  transform: rotate(-90deg);
+}
+
+.focus-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+
+.focus-ring-bg {
+  stroke: var(--f-border);
+}
+
+.focus-ring-fg {
+  stroke: var(--f-accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 250ms linear;
+}
+
+.focus-pill .focus-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+}
+
+.focus-pill .focus-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.focus-strip {
+  position: absolute;
+  z-index: 9;
+  right: 12px;
+  bottom: 84px;
+  width: 73px;
+  height: 4px;
+  padding: 0;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 1px rgba(26, 18, 8, 0.6);
+  overflow: hidden;
+}
+
+.focus-strip-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #202c50;
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 250ms linear;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focus-backdrop,
+  .focus-panel,
+  .focus-pill,
+  .focus-strip,
+  .focus-backdrop.show,
+  .focus-panel.show,
+  .focus-pill.show,
+  .focus-strip.show {
+    transition: none;
+  }
+  .focus-panel,
+  .focus-panel.show {
+    transform: translate(-50%, -50%);
+  }
+  .focus-pill,
+  .focus-pill.show {
+    transform: none;
+  }
+}

@@ -535,12 +535,11 @@ fn bot_overlay_frame(app_handle: &AppHandle) -> Option<(f64, f64, f64, f64)> {
 #[cfg(target_os = "macos")]
 static BOT_FRAME: std::sync::Mutex<Option<(f64, f64, f64, f64)>> = std::sync::Mutex::new(None);
 
-/// Tells the bot where the cursor is while it is near a screen edge, so the
-/// page can make the window take clicks only while the cursor is on the dog.
-/// Away from the edges nothing is sent: the dog never leaves them.
+/// Tells the bot where the cursor is while it is inside the bot window, so the
+/// page can make the window take clicks only while the cursor is on the dog,
+/// its hut, the focus timer or its panel. Sent only when the cursor moves.
 #[cfg(target_os = "macos")]
 fn watch_cursor_for_bot(app_handle: &AppHandle) {
-    const EDGE_ZONE: f64 = 110.0;
     let handle = app_handle.clone();
     std::thread::spawn(move || {
         let mut last: Option<(i32, i32)> = None;
@@ -559,8 +558,7 @@ fn watch_cursor_for_bot(app_handle: &AppHandle) {
             let x = cx as f64 - fx;
             let y = cy as f64 - fy;
             let inside = x >= 0.0 && y >= 0.0 && x <= fw && y <= fh;
-            let near = inside
-                && (x < EDGE_ZONE || y < EDGE_ZONE || x > fw - EDGE_ZONE || y > fh - EDGE_ZONE);
+            let near = inside;
             if near {
                 if last != Some((cx, cy)) {
                     let _ = handle.emit_to(BOT_OVERLAY_LABEL, "bot-cursor", (x, y));

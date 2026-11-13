@@ -3,6 +3,8 @@
 // window (see src-tauri/src/overlay.rs). Opened in a plain browser it shows a
 // preview with buttons instead of listening for Tauri events.
 
+import { initFocus, type Focus } from "./focus";
+
 type BotState = "idle" | "listen" | "think";
 type Mode = "walk" | "stand" | "listen" | "think" | "sleep" | "chew" | "eat";
 
@@ -168,6 +170,9 @@ let visitTimer: number | undefined;
 let hoverSince = 0;
 let pettingPause = false;
 let lastHeart = 0;
+// A focus session runs: the dog sits at home, quiet, until it is over.
+let focusing = false;
+let focus: Focus | undefined;
 
 // ---- hut and bowl, always at the bottom right ----
 
@@ -564,7 +569,7 @@ function parkingSpot(): number {
 
 /** Parked for good, on a visit to the hut, or called to a full bowl. */
 function needHome(): boolean {
-  return parked || visiting || wantFood;
+  return parked || visiting || wantFood || focusing;
 }
 
 function arriveHome() {
@@ -588,6 +593,10 @@ function arriveHome() {
 /** At home the dog sits, sleeps in the hut or chews a bone, in turns. */
 function nextAtHome() {
   if (state !== "idle") return;
+  if (focusing) {
+    setMode("stand");
+    return;
+  }
   if (!parked && !visiting) {
     walk();
     return;
@@ -756,7 +765,7 @@ function hideBubble(resume: boolean) {
 
 /** Stops, sits down and shows one line next to the dog. False if busy. */
 function say(): boolean {
-  if (state !== "idle" || talking) return false;
+  if (state !== "idle" || talking || focusing) return false;
   if (mode !== "walk" && mode !== "stand") return false;
   freeze();
   setMode("stand");
@@ -895,7 +904,15 @@ function scheduleVisit() {
   window.clearTimeout(visitTimer);
   visitTimer = window.setTimeout(
     () => {
-      if (!parked && state === "idle" && !talking && mode === "walk") visit();
+      if (
+        !parked &&
+        !focusing &&
+        state === "idle" &&
+        !talking &&
+        mode === "walk"
+      ) {
+        visit();
+      }
       scheduleVisit();
     },
     360000 + Math.random() * 480000,
@@ -927,6 +944,33 @@ function togglePark() {
   walk();
 }
 
+/** Focus on: home and sit still. Off: back to the usual life. */
+function setFocusing(on: boolean) {
+  if (on === focusing) return;
+  focusing = on;
+  visiting = false;
+  forcedAct = null;
+  hideBubble(false);
+  if (state !== "idle") return;
+  freeze();
+  walk();
+}
+
+/** Time is up: the dog gets up once, then the quiet time is over. */
+function focusDone() {
+  if (state !== "idle" || mode === "walk" || mode === "sleep") {
+    setFocusing(false);
+    return;
+  }
+  window.clearTimeout(homeTimer);
+  // Up on all fours (the side view), trotting on the spot for a moment.
+  setMode("walk");
+  window.setTimeout(() => {
+    if (mode === "walk") setMode("stand");
+    setFocusing(false);
+  }, 1400);
+}
+
 /**
  * The window lets every click through. Only while the cursor is on the dog,
  * its hut or its bowl does it take clicks itself, so those can be clicked and
@@ -942,7 +986,8 @@ function updateClickable() {
       return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
     };
     dogHit = mode !== "sleep" && inside(botEl);
-    hit = dogHit || inside(hutEl) || inside(bowlEl);
+    hit =
+      dogHit || inside(hutEl) || inside(bowlEl) || (focus?.hit(x, y) ?? false);
   }
   // In the app the cursor comes from the backend; in a browser from the DOM.
   if (setClickThrough) setHover(dogHit);
@@ -977,7 +1022,7 @@ window.addEventListener("resize", () => {
 });
 
 botEl.addEventListener("click", togglePark);
-hutEl.addEventListener("click", togglePark);
+hutEl.addEventListener("click", () => focus?.open());
 bowlEl.addEventListener("click", feed);
 botEl.addEventListener("contextmenu", (event) => {
   event.preventDefault();
@@ -993,6 +1038,12 @@ async function start() {
   scheduleVisit();
   drawHut();
   drawBowl();
+  focus = initFocus({
+    stage: stageEl,
+    onActiveChange: setFocusing,
+    onFinish: focusDone,
+    onLayoutChange: updateClickable,
+  });
 
   if ("__TAURI_INTERNALS__" in window) {
     const { listen } = await import("@tauri-apps/api/event");
