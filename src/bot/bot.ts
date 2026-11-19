@@ -4,6 +4,7 @@
 // preview with buttons instead of listening for Tauri events.
 
 import { initFocus, type Focus } from "./focus";
+import { initGlow } from "./glow";
 
 type BotState = "idle" | "listen" | "think";
 type Mode = "walk" | "stand" | "listen" | "think" | "sleep" | "chew" | "eat";
@@ -125,6 +126,13 @@ const OY = 14; // sprite's top row; its last row sits on the grid's bottom row
 const EDGE_ROTATION = [0, -90, 180, 90];
 
 const stageEl = document.getElementById("stage") as HTMLElement;
+// The window covers the whole screen so the glow reaches every edge; the dog
+// keeps to the area below the menu bar.
+const menuBar = (window.screen as Screen & { availTop?: number }).availTop ?? 0;
+if ("__TAURI_INTERNALS__" in window && menuBar > 0 && menuBar < 80) {
+  stageEl.style.top = `${menuBar}px`;
+}
+const glow = initGlow(document.getElementById("glow") as HTMLCanvasElement);
 const botEl = document.getElementById("bot") as HTMLElement;
 const canvas = document.getElementById("sprite") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
@@ -708,6 +716,7 @@ function setState(next: BotState) {
   if (next === state) return;
   hideBubble(false);
   state = next;
+  glow.setState(next);
   window.clearTimeout(thinkTimer);
   freeze();
   if (next === "idle") {
@@ -1005,6 +1014,7 @@ function updateClickable() {
 }
 
 function setLevel(value: number) {
+  glow.setLevel(value);
   if (Number.isFinite(value)) level = Math.max(level, Math.min(1, value));
 }
 

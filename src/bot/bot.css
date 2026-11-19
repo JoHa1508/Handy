@@ -8,10 +8,18 @@ body {
   background: transparent;
 }
 
-#stage {
-  position: relative;
+/* The glow lies under the dog and spans the whole window. */
+#glow {
+  position: fixed;
+  inset: 0;
   width: 100%;
   height: 100%;
+  pointer-events: none;
+}
+
+#stage {
+  position: absolute;
+  inset: 0;
   overflow: hidden;
 }
 

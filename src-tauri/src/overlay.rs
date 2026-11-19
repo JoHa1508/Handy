@@ -512,15 +512,14 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
     }
 }
 
-/// Where the bot lives, in logical points: the primary monitor from below the
-/// menu bar down to the very bottom of the screen, across its full width. The
-/// dog walks along the true screen edge, in front of the Dock.
+/// Where the bot lives, in logical points: the whole primary monitor, so the
+/// edge glow reaches all four screen edges. The page keeps the dog below the
+/// menu bar; it walks along the true screen edge, in front of the Dock.
 #[cfg(target_os = "macos")]
 fn bot_overlay_frame(app_handle: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     let monitor = app_handle.primary_monitor().ok().flatten()?;
     let scale = monitor.scale_factor();
-    let wa = monitor.work_area();
-    let top = wa.position.y as f64 / scale;
+    let top = monitor.position().y as f64 / scale;
     let bottom = (monitor.position().y as f64 + monitor.size().height as f64) / scale;
     Some((
         monitor.position().x as f64 / scale,
