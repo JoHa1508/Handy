@@ -5,7 +5,7 @@ name: "Bot Build"
 on:
   workflow_dispatch:
   push:
-    branches: [bot, schimmer]
+    branches: [bot]
 
 jobs:
   build:

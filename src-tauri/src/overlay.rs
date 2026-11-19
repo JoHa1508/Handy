@@ -571,12 +571,13 @@ fn watch_cursor_for_bot(app_handle: &AppHandle) {
     });
 }
 
-/// The edge bot's dog, "golden" or "berner". The bot page remembers it and
-/// reports it at start; the tray menu shows and changes it.
+/// What plays a session: one of the edge bot's dogs, "golden" or "berner", or
+/// "schimmer", the glow along the screen edge without a dog. The bot page
+/// remembers it and reports it at start; the tray menu shows and changes it.
 static BOT_BREED: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
 fn valid_breed(breed: &str) -> bool {
-    matches!(breed, "golden" | "berner")
+    matches!(breed, "golden" | "berner" | "schimmer")
 }
 
 /// The dog the tray menu shows as checked.

@@ -116,6 +116,16 @@ try {
   // No storage: golden retriever it is.
 }
 let PALETTE = PALETTES[breed];
+// What plays a session: the dog, or the quiet glow along the screen edge
+// with the dog and its hut put away. Picked in the tray menu.
+const LOOK_KEY = "handy-bot-look";
+const GLOW_LOOK = "schimmer";
+let glowLook = false;
+try {
+  glowLook = window.localStorage.getItem(LOOK_KEY) === GLOW_LOOK;
+} catch {
+  // No storage: the dog it is.
+}
 const WAVE = "#ffffff";
 const WAVE_OUTLINE = "#1a1208";
 const OX = 8; // sprite's left column inside the grid
@@ -716,7 +726,7 @@ function setState(next: BotState) {
   if (next === state) return;
   hideBubble(false);
   state = next;
-  glow.setState(next);
+  glow.setState(glowLook ? next : "idle");
   window.clearTimeout(thinkTimer);
   freeze();
   if (next === "idle") {
@@ -819,13 +829,27 @@ function scheduleSay(min: number, max: number) {
   );
 }
 
-let reportBreed: ((value: Breed) => void) | undefined;
+let reportBreed: ((value: string) => void) | undefined;
+
+/** Switches between the dog and the glow, remembers it and tells the tray. */
+function setGlowLook(on: boolean) {
+  glowLook = on;
+  stageEl.style.display = on ? "none" : "";
+  glow.setState(on ? state : "idle");
+  reportBreed?.(on ? GLOW_LOOK : breed);
+  try {
+    window.localStorage.setItem(LOOK_KEY, on ? GLOW_LOOK : "dog");
+  } catch {
+    // Not remembered then.
+  }
+  updateClickable();
+}
 
 /** Shows the given dog, remembers it and tells the tray menu. */
 function setBreed(next: Breed) {
   breed = next;
   PALETTE = PALETTES[breed];
-  reportBreed?.(breed);
+  if (!glowLook) reportBreed?.(breed);
   try {
     window.localStorage.setItem(BREED_KEY, breed);
   } catch {
@@ -1014,7 +1038,7 @@ function updateClickable() {
 }
 
 function setLevel(value: number) {
-  glow.setLevel(value);
+  if (glowLook) glow.setLevel(value);
   if (Number.isFinite(value)) level = Math.max(level, Math.min(1, value));
 }
 
@@ -1056,6 +1080,7 @@ async function start() {
   scheduleVisit();
   drawHut();
   drawBowl();
+  if (glowLook) stageEl.style.display = "none";
   focus = initFocus({
     stage: stageEl,
     onActiveChange: setFocusing,
@@ -1068,10 +1093,13 @@ async function start() {
     reportBreed = (value) => {
       void emit("bot-breed-current", value);
     };
-    reportBreed(breed);
+    reportBreed(glowLook ? GLOW_LOOK : breed);
     await listen<string>("bot-breed", (event) => {
-      if (event.payload === "golden" || event.payload === "berner") {
+      if (event.payload === GLOW_LOOK) {
+        if (!glowLook) setGlowLook(true);
+      } else if (event.payload === "golden" || event.payload === "berner") {
         if (event.payload !== breed) setBreed(event.payload);
+        if (glowLook) setGlowLook(false);
       }
     });
     await listen<string>("bot-state", (event) => {
@@ -1104,6 +1132,7 @@ async function start() {
     setState,
     setLevel,
     toggleBreed,
+    setGlowLook,
     say,
     visit,
     feed,

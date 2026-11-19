@@ -512,12 +512,14 @@ fn language_submenu(
     Ok(submenu)
 }
 
-/// "Hund" with the two dogs of the edge bot, the current one checked.
+/// "Animation" with the two dogs of the edge bot and the edge glow, the
+/// current one checked.
 fn bot_breed_submenu(app: &AppHandle, current: &str) -> tauri::Result<Submenu<tauri::Wry>> {
-    let submenu = Submenu::with_id(app, "bot_breed_submenu", "Hund", true)?;
+    let submenu = Submenu::with_id(app, "bot_breed_submenu", "Animation", true)?;
     for (id, name) in [
         ("golden", "Golden Retriever"),
         ("berner", "Berner Sennenhund"),
+        ("schimmer", "Schimmer"),
     ] {
         submenu.append(&CheckMenuItem::with_id(
             app,
